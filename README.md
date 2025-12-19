@@ -85,24 +85,25 @@ git clone https://github.com/yourusername/AI-Object-Dection-Continual-Learning.g
 cd AI-Object-Dection-Continual-Learning
 ```
 
-2. **Install dependencies**
+2. **Run the application**
+
+**Windows (Recommended):** Double-click `run_app.bat`
+- Automatically checks Python installation
+- Installs all dependencies on first run
+- Opens browser automatically
+
+**Command Line:**
 ```bash
+# Manual installation (optional)
 pip install -r requirements.txt
-```
 
-3. **Run the application**
-
-**Option 1: Double-click** (Windows)
-```
-run_app.bat
-```
-
-**Option 2: Command line**
-```bash
+# Run the app
 streamlit run app.py
 ```
 
-The app will automatically open in your browser at `http://localhost:8501`
+The app will open in your browser at `http://localhost:8501`
+
+**Note:** On first run, dependency installation may take 5-10 minutes depending on your internet connection. Subsequent runs start immediately.
 
 ## User Guide
 
