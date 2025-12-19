@@ -1,9 +1,25 @@
+# Deep Learning Framework
 torch>=2.0.0
 torchvision>=0.15.0
-torchaudio
-tqdm
-matplotlib
-numpy
-gradio
-timm  # For additional vision models
-einops  # For tensor operations in transformers
+
+# Web Interface
+streamlit==1.31.0
+plotly>=5.18.0
+
+# Image Processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Training Utilities
+tqdm>=4.65.0
+
+# Text Processing (for Multi-Modal)
+transformers>=4.30.0
+sentencepiece>=0.1.99
+
+# Tensor Operations
+einops>=0.6.1
