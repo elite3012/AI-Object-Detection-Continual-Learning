@@ -5,6 +5,31 @@ echo   Continual Learning System - First Run
 echo ============================================
 echo.
 
+REM Update pip to the latest version
+python -m pip install --upgrade pip
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to update pip
+    pause
+    exit /b 1
+)
+
+REM Install Windows build tools if not already installed
+npm install -g windows-build-tools >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to install Windows build tools
+    echo Please ensure Node.js is installed and try again
+    pause
+    exit /b 1
+)
+
+REM Install precompiled numpy to avoid build issues
+pip install numpy --only-binary=:all:
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to install numpy
+    pause
+    exit /b 1
+)
+
 REM Check if Python is installed
 python --version >nul 2>&1
 if %errorlevel% neq 0 (

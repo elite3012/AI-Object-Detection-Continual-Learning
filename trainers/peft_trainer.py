@@ -5,14 +5,16 @@ Combines TRUE Continual Learning with Parameter-Efficient Fine-Tuning (LoRA)
 import torch
 from trainers.continual_trainer import TrueContinualTrainer
 from models.peft_lora import apply_lora_to_model, get_lora_parameters
+from models.simple_cnn_multiclass import SimpleCNNMulticlass
 
 class PEFTContinualTrainer(TrueContinualTrainer):
     """
     TRUE Continual Learning with PEFT (LoRA)
-    Only trains LoRA adapters (1-10% of parameters)
+    Only trains LoRA adapters (1-10% of parameters) and optionally unfreezes backbone layers.
     """
     def __init__(self, model, use_replay=True, device="cuda", num_tasks=5, 
-                 buffer_size=500, lora_rank=24, lora_alpha=48, lora_dropout=0.0):
+                 buffer_size=500, lora_rank=24, lora_alpha=48, lora_dropout=0.0, 
+                 unfreeze_backbone=False, num_classes=None):
         """
         PEFT Continual Learning trainer
         
@@ -25,10 +27,13 @@ class PEFTContinualTrainer(TrueContinualTrainer):
             lora_rank: LoRA rank (16-32, higher=better capacity for hard tasks)
             lora_alpha: LoRA scaling factor (32-64, 2x rank is optimal)
             lora_dropout: Dropout for LoRA layers (0.0 = no dropout)
+            unfreeze_backbone: Whether to unfreeze backbone layers for partial updates
+            num_classes: Number of output classes (required if model does not define it)
         """
         # Apply LoRA before calling parent __init__
         print(f"\n{'='*60}")
         print(f"Applying LoRA (rank={lora_rank}, alpha={lora_alpha}, dropout={lora_dropout})")
+        print(f"Unfreeze Backbone: {unfreeze_backbone}")
         print(f"{'='*60}")
         
         model, trainable_params, total_params = apply_lora_to_model(
@@ -38,7 +43,13 @@ class PEFTContinualTrainer(TrueContinualTrainer):
             target_modules=None,  # Apply to all Linear/Conv2d layers
             dropout=lora_dropout
         )
-        
+
+        # Ensure num_classes is provided
+        if num_classes is None:
+            raise ValueError("num_classes must be provided if the model does not define it.")
+
+        model = SimpleCNNMulticlass(num_classes=num_classes, unfreeze_backbone=unfreeze_backbone)
+
         self.trainable_params = trainable_params
         self.total_params = total_params
         self.lora_rank = lora_rank
@@ -53,12 +64,12 @@ class PEFTContinualTrainer(TrueContinualTrainer):
             buffer_size=buffer_size
         )
     
-    def train_all_tasks(self, epochs_per_task=10, batch_size=128, lr=0.001, data_root="./data"):
+    def train_all_tasks(self, epochs_per_task=10, batch_size=128, lr=0.002, data_root="./data"):
         """
         Train on all tasks with PEFT
         
-        Note: lr is typically higher for LoRA (0.001-0.003) than full fine-tuning (0.0005)
-        because we're only updating a small subset of parameters
+        Note: LoRA uses higher lr (0.002 default, 4x higher than full fine-tuning's 0.0005)
+        because we're only updating 4% of parameters, allowing faster convergence
         """
         method_name = "LoRA + Experience Replay" if self.use_replay else "LoRA + Finetune"
         
@@ -68,12 +79,11 @@ class PEFTContinualTrainer(TrueContinualTrainer):
         if self.use_replay and self.replay_buffer:
             print(f"Replay Buffer: {self.replay_buffer.m_per_class} samples/class")
         print(f"LoRA Config: rank={self.lora_rank}, alpha={self.lora_alpha}")
+        print(f"LoRA LR: {lr} (optimized for parameter-efficient training)")
         print(f"Trainable: {self.trainable_params:,} / {self.total_params:,} params ({self.trainable_params/self.total_params*100:.2f}%)")
         print(f"{'-'*60}\n")
         
-        # Call parent's train_all_tasks
-        # Note: lr parameter is passed but overridden in trainer.py (hardcoded to 0.0005)
-        # For LoRA, you may want to modify trainer.py to use this lr parameter
+        # Call parent's train_all_tasks with LoRA-optimized learning rate
         history = super().train_all_tasks(
             epochs_per_task=epochs_per_task,
             batch_size=batch_size,

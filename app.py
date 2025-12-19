@@ -71,9 +71,19 @@ phase = st.sidebar.radio("Training Strategy", [
 # Common params
 st.sidebar.subheader("Training Parameters")
 num_tasks = st.sidebar.slider("Number of Tasks", 1, 5, 5)
-epochs_per_task = st.sidebar.slider("Epochs per Task", 5, 30, 15)
-batch_size = st.sidebar.slider("Batch Size", 32, 256, 128)
-lr = st.sidebar.select_slider("Learning Rate", options=[0.0001, 0.0005, 0.001, 0.005, 0.01], value=0.001)
+
+# Phase-specific defaults for optimal performance
+if "PEFT" in phase:
+    # LoRA: Fewer epochs (faster convergence), larger batch size (less memory), higher LR
+    epochs_per_task = st.sidebar.slider("Epochs per Task", 5, 30, 12)
+    batch_size = st.sidebar.slider("Batch Size", 32, 512, 256)
+    lr = st.sidebar.select_slider("Learning Rate", options=[0.0001, 0.0005, 0.001, 0.002, 0.003, 0.005], value=0.002)
+    st.sidebar.info("LoRA uses larger batch size, fewer epochs, and higher LR for efficiency")
+else:
+    # Standard settings for other phases
+    epochs_per_task = st.sidebar.slider("Epochs per Task", 5, 30, 15)
+    batch_size = st.sidebar.slider("Batch Size", 32, 256, 128)
+    lr = st.sidebar.select_slider("Learning Rate", options=[0.0001, 0.0005, 0.001, 0.005, 0.01], value=0.001)
 
 # Strategy-specific params
 if "Experience Replay" == phase:
@@ -199,7 +209,10 @@ with tab1:
                     num_tasks=num_tasks,
                     buffer_size=buffer_size,
                     lora_rank=lora_rank,
-                    lora_alpha=lora_alpha
+                    lora_alpha=lora_alpha,
+                    lora_dropout=0.0,
+                    unfreeze_backbone=True,
+                    num_classes=10  # Explicitly passing the number of classes
                 )
             elif "Multi-Modal" in phase:
                 vision_model = SimpleCNNMulticlass(num_classes=10)
@@ -311,7 +324,14 @@ with tab1:
                 # Get task data
                 task_indices = [i for i, (_, label) in enumerate(train_dataset) if label in task_classes]
                 task_subset = torch.utils.data.Subset(train_dataset, task_indices)
-                task_loader = DataLoader(task_subset, batch_size=batch_size, shuffle=True)
+                
+                # LoRA optimization: Use larger batch size for memory efficiency
+                effective_batch_size = batch_size
+                if "PEFT" in phase:
+                    # LoRA uses 4% params → can fit 2x larger batches without OOM
+                    effective_batch_size = min(batch_size, 512)  # Already optimized in UI, just ensure cap
+                
+                task_loader = DataLoader(task_subset, batch_size=effective_batch_size, shuffle=True)
                 
                 # Train based on phase type
                 if "Multi-Modal" in phase:
