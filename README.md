@@ -315,14 +315,12 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 
 For questions, issues, or collaboration:
 - GitHub Issues: [Create an issue](https://github.com/yourusername/AI-Object-Dection-Continual-Learning/issues)
-- Email: your.email@example.com
+- Email: quyphuctran1@gmail.com
 
 ## Star History
 
 If you find this project helpful, please consider giving it a star!
 
 ---
-
-**Built for the Continual Learning Community**
 
 *Last Updated: December 2025*
