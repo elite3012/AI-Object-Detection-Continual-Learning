@@ -1,9 +1,0 @@
-torch>=2.0.0
-torchvision>=0.15.0
-torchaudio
-tqdm
-matplotlib
-numpy
-gradio
-timm  # For additional vision models
-einops  # For tensor operations in transformers
