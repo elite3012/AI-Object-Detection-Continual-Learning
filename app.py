@@ -502,11 +502,94 @@ with tab1:
                 
                 styled_df = df.style.apply(highlight_best)
                 table_metrics.dataframe(styled_df, use_container_width=True, hide_index=True)
+                
+                # Save checkpoint after each task
+                checkpoint_dir = os.path.join(SCRIPT_DIR, "checkpoints")
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                
+                phase_names = {
+                    "Experience Replay": "phase1",
+                    "PEFT/LoRA": "phase2",
+                    "Multi-Modal (Vision + Text)": "phase3",
+                    "Hardware Optimization": "phase4"
+                }
+                phase_name = phase_names.get(phase, "model")
+                
+                checkpoint_path = os.path.join(checkpoint_dir, f"{phase_name}_task{task_id}.pt")
+                torch.save({
+                    'model_state_dict': trainer.model.state_dict(),
+                    'task_id': task_id,
+                    'metrics': {
+                        'task_accuracy': training_data['accuracies'][task_id][task_id],
+                        'avg_accuracy': np.mean(training_data['accuracies'][task_id]),
+                        'forgetting': training_data['forgetting'][task_id],
+                        'training_time': training_data['training_times'][task_id]
+                    },
+                    'phase': phase,
+                    'config': {
+                        'num_tasks': task_id + 1,
+                        'epochs_per_task': epochs_per_task,
+                        'batch_size': batch_size,
+                        'lr': lr
+                    },
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }, checkpoint_path)
+                
+                # Get checkpoint file size
+                checkpoint_size_bytes = os.path.getsize(checkpoint_path)
+                checkpoint_size_mb = checkpoint_size_bytes / (1024 * 1024)
             
             # Training complete
             overall_progress.progress(1.0)
             progress_pct.write("100%")
             task_status.success("Training Complete")
+            
+            # Apply hardware optimization compression for Phase 4
+            if phase == "Hardware Optimization":
+                st.markdown("---")
+                st.subheader("🔧 Hardware Optimization - Compression")
+                
+                compress_status = st.empty()
+                compress_status.info("Applying model compression (quantization + pruning)...")
+                
+                try:
+                    # Get model size before compression
+                    pre_compress_checkpoint = os.path.join(checkpoint_dir, f"{phase_name}_precompress.pt")
+                    torch.save(trainer.model.state_dict(), pre_compress_checkpoint)
+                    pre_compress_size_bytes = os.path.getsize(pre_compress_checkpoint)
+                    pre_compress_size_mb = pre_compress_size_bytes / (1024 * 1024)
+                    
+                    # Apply compression
+                    compression_metrics = trainer.compress_final()
+                    
+                    # Get model size after compression
+                    post_compress_checkpoint = os.path.join(checkpoint_dir, f"{phase_name}_compressed.pt")
+                    torch.save(trainer.model.state_dict(), post_compress_checkpoint)
+                    post_compress_size_bytes = os.path.getsize(post_compress_checkpoint)
+                    post_compress_size_mb = post_compress_size_bytes / (1024 * 1024)
+                    
+                    compression_ratio = pre_compress_size_mb / post_compress_size_mb
+                    
+                    compress_status.success(f"✅ Compression Complete: {pre_compress_size_mb:.2f} MB → {post_compress_size_mb:.2f} MB ({compression_ratio:.2f}x reduction)")
+                    
+                    # Update checkpoint_size_mb for summary display
+                    checkpoint_size_mb = post_compress_size_mb
+                    
+                    # Show compression details
+                    col_comp1, col_comp2, col_comp3 = st.columns(3)
+                    with col_comp1:
+                        st.metric("Before Compression", f"{pre_compress_size_mb:.2f} MB")
+                    with col_comp2:
+                        st.metric("After Compression", f"{post_compress_size_mb:.2f} MB", delta=f"-{pre_compress_size_mb - post_compress_size_mb:.2f} MB")
+                    with col_comp3:
+                        st.metric("Compression Ratio", f"{compression_ratio:.2f}x")
+                    
+                    # Cleanup temporary checkpoints
+                    os.remove(pre_compress_checkpoint)
+                    
+                except Exception as e:
+                    compress_status.error(f"Compression failed: {str(e)}")
+                    st.warning("Continuing with uncompressed model...")
             
             # Save trainer
             st.session_state.trainer = trainer
@@ -521,7 +604,7 @@ with tab1:
             st.markdown("---")
             st.subheader("Training Summary")
             
-            sum1, sum2, sum3, sum4 = st.columns(4)
+            sum1, sum2, sum3, sum4, sum5 = st.columns(5)
             with sum1:
                 final_avg = np.mean(training_data['accuracies'][-1])
                 st.metric("Final Avg Accuracy", f"{final_avg*100:.2f}%")
@@ -535,8 +618,12 @@ with tab1:
                 if len(training_data['forgetting']) > 1:
                     avg_forg = np.mean(training_data['forgetting'][1:])
                     st.metric("Avg Forgetting", f"{avg_forg:.2f}%")
+            with sum5:
+                # Use last checkpoint size as reference
+                if 'checkpoint_size_mb' in locals():
+                    st.metric("Model Size", f"{checkpoint_size_mb:.2f} MB")
             
-            # Save checkpoint
+            # Save final checkpoint with all training data
             checkpoint_dir = os.path.join(SCRIPT_DIR, "checkpoints")
             os.makedirs(checkpoint_dir, exist_ok=True)
             
@@ -548,7 +635,7 @@ with tab1:
             }
             phase_name = phase_names.get(phase, "model")
             
-            checkpoint_path = os.path.join(checkpoint_dir, f"{phase_name}_task{num_tasks-1}.pt")
+            final_checkpoint_path = os.path.join(checkpoint_dir, f"{phase_name}_final.pt")
             torch.save({
                 'model_state_dict': trainer.model.state_dict(),
                 'metrics': training_data,
@@ -561,9 +648,15 @@ with tab1:
                     'lr': lr
                 },
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }, checkpoint_path)
+            }, final_checkpoint_path)
             
-            st.success(f"Checkpoint saved: {checkpoint_path}")
+            # Get final checkpoint size
+            final_model_size_bytes = os.path.getsize(final_checkpoint_path)
+            final_model_size_mb = final_model_size_bytes / (1024 * 1024)
+            
+            st.success(f"✅ {num_tasks} task checkpoints saved to: checkpoints/{phase_name}_task*.pt")
+            st.success(f"✅ Final checkpoint saved: {final_checkpoint_path}")
+            st.info(f"📊 Model Size: {final_model_size_mb:.2f} MB ({final_model_size_bytes:,} bytes)")
             
             # Export report
             st.markdown("---")
@@ -578,6 +671,7 @@ CONFIGURATION:
 - Epochs per Task: {epochs_per_task}
 - Batch Size: {batch_size}
 - Learning Rate: {lr}
+- Final Model Size: {final_model_size_mb:.2f} MB ({final_model_size_bytes:,} bytes)
 
 RESULTS:
 {'='*70}
@@ -596,6 +690,10 @@ RESULTS:
             export_text += f"- Average Time per Task: {avg_time/60:.2f} minutes\n"
             if len(training_data['forgetting']) > 1:
                 export_text += f"- Average Forgetting: {avg_forg:.2f}%\n"
+            export_text += f"- Final Model Size: {final_model_size_mb:.2f} MB ({final_model_size_bytes:,} bytes)\n"
+            export_text += f"\nCHECKPOINTS:\n"
+            export_text += f"- Task Checkpoints: checkpoints/{phase_name}_task0.pt to task{num_tasks-1}.pt\n"
+            export_text += f"- Final Checkpoint: {final_checkpoint_path}\n"
             export_text += f"{'='*70}\n"
             
             st.download_button(
@@ -615,8 +713,413 @@ RESULTS:
 # ===== TESTING TAB =====
 with tab2:
     st.header("Model Testing")
-    st.info("Testing functionality preserved from original app.py")
-    # (Keep existing testing code)
+    
+    if st.session_state.trainer is None:
+        st.warning("No trained model available. Please train a model first.")
+    else:
+        st.success("Model loaded and ready for testing")
+        
+        # Test mode selection
+        test_mode = st.radio("Test Mode", ["Upload Image", "Random from Dataset", "Batch Evaluation"], horizontal=True)
+        
+        # ===== UPLOAD IMAGE MODE =====
+        if test_mode == "Upload Image":
+            st.subheader("Upload an Image")
+            uploaded_file = st.file_uploader("Choose an image (28x28 grayscale recommended)", type=['png', 'jpg', 'jpeg'])
+            
+            col1, col2 = st.columns(2)
+            
+            if uploaded_file is not None:
+                # Load and preprocess image
+                image = Image.open(uploaded_file).convert('L')
+                
+                with col1:
+                    st.image(image, caption="Uploaded Image", width=200)
+                
+                # Preprocessing options
+                with st.expander("Image Preprocessing Options"):
+                    resize_method = st.selectbox("Resize Method", ["Fit to 28x28", "Crop Center", "Pad to Square"])
+                    contrast = st.slider("Contrast Enhancement", 0.5, 2.0, 1.0, 0.1)
+                    brightness = st.slider("Brightness Adjustment", 0.5, 2.0, 1.0, 0.1)
+                    apply_blur = st.checkbox("Apply Slight Blur", value=False)
+                    invert = st.checkbox("Invert Colors", value=False)
+                
+                # Preprocess
+                if resize_method == "Fit to 28x28":
+                    image = image.resize((28, 28), Image.Resampling.LANCZOS)
+                elif resize_method == "Crop Center":
+                    width, height = image.size
+                    size = min(width, height)
+                    left = (width - size) // 2
+                    top = (height - size) // 2
+                    image = image.crop((left, top, left + size, top + size))
+                    image = image.resize((28, 28), Image.Resampling.LANCZOS)
+                else:  # Pad to Square
+                    width, height = image.size
+                    size = max(width, height)
+                    new_image = Image.new('L', (size, size), 0)
+                    new_image.paste(image, ((size - width) // 2, (size - height) // 2))
+                    image = new_image.resize((28, 28), Image.Resampling.LANCZOS)
+                
+                # Apply enhancements
+                if contrast != 1.0:
+                    enhancer = ImageEnhance.Contrast(image)
+                    image = enhancer.enhance(contrast)
+                
+                if brightness != 1.0:
+                    enhancer = ImageEnhance.Brightness(image)
+                    image = enhancer.enhance(brightness)
+                
+                if apply_blur:
+                    image = image.filter(ImageFilter.GaussianBlur(radius=0.5))
+                
+                if invert:
+                    image = ImageOps.invert(image)
+                
+                with col2:
+                    st.image(image, caption="Preprocessed Image (28x28)", width=200)
+                
+                # Convert to tensor
+                img_array = np.array(image).astype(np.float32) / 255.0
+                img_tensor = torch.from_numpy(img_array).unsqueeze(0).unsqueeze(0)
+                img_tensor = (img_tensor - 0.5) / 0.5  # Normalize
+                img_tensor = img_tensor.to(st.session_state.device)
+                
+                # Predict
+                if st.button("Classify Image", type="primary", use_container_width=True):
+                    with st.spinner("Classifying..."):
+                        st.session_state.trainer.model.eval()
+                        with torch.no_grad():
+                            # Handle Multi-Modal models
+                            if "Multi-Modal" in phase:
+                                # Create placeholder text for uploaded images
+                                text = "uploaded fashion item"
+                                input_ids, attention_mask = encode_texts([text], device=st.session_state.device)
+                                outputs = st.session_state.trainer.model(img_tensor, input_ids, attention_mask)
+                            else:
+                                outputs = st.session_state.trainer.model(img_tensor)
+                            
+                            probabilities = torch.softmax(outputs, dim=1)
+                            confidence, predicted = torch.max(probabilities, 1)
+                            
+                            predicted_class = predicted.item()
+                            confidence_pct = confidence.item() * 100
+                        
+                        # Display results
+                        st.markdown("---")
+                        st.subheader("Prediction Results")
+                        
+                        result_col1, result_col2 = st.columns(2)
+                        
+                        with result_col1:
+                            st.metric("Predicted Class", CLASS_NAMES[predicted_class])
+                            st.metric("Confidence", f"{confidence_pct:.2f}%")
+                        
+                        with result_col2:
+                            # Show top 3 predictions
+                            top3_prob, top3_idx = torch.topk(probabilities[0], 3)
+                            st.write("**Top 3 Predictions:**")
+                            for i in range(3):
+                                st.write(f"{i+1}. {CLASS_NAMES[top3_idx[i].item()]}: {top3_prob[i].item()*100:.2f}%")
+                        
+                        # Confidence bar chart
+                        all_probs = probabilities[0].cpu().numpy()
+                        fig = go.Figure(data=[
+                            go.Bar(
+                                x=[CLASS_NAMES[i] for i in range(10)],
+                                y=all_probs * 100,
+                                marker_color=['#FF4B4B' if i == predicted_class else '#CCCCCC' for i in range(10)]
+                            )
+                        ])
+                        fig.update_layout(
+                            title="Class Probabilities",
+                            xaxis_title="Class",
+                            yaxis_title="Probability (%)",
+                            yaxis=dict(range=[0, 100]),
+                            height=400
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+        
+        # ===== RANDOM FROM DATASET MODE =====
+        elif test_mode == "Random from Dataset":
+            st.subheader("Test on Random Samples")
+            
+            # Load test dataset
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,), (0.5,))
+            ])
+            data_root = os.path.join(SCRIPT_DIR, "data")
+            test_dataset = datasets.FashionMNIST(data_root, train=False, download=True, transform=transform)
+            
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                num_samples = st.slider("Number of Samples", 1, 10, 5)
+                filter_class = st.selectbox("Filter by Class", ["All"] + CLASS_NAMES)
+            
+            if st.button("Generate Random Samples", type="primary", use_container_width=True):
+                # Get random samples
+                if filter_class == "All":
+                    indices = np.random.choice(len(test_dataset), num_samples, replace=False)
+                else:
+                    class_idx = CLASS_NAMES.index(filter_class)
+                    class_indices = [i for i, (_, label) in enumerate(test_dataset) if label == class_idx]
+                    indices = np.random.choice(class_indices, min(num_samples, len(class_indices)), replace=False)
+                
+                st.markdown("---")
+                st.subheader("Predictions")
+                
+                # Create grid
+                cols_per_row = 5
+                for i in range(0, len(indices), cols_per_row):
+                    cols = st.columns(cols_per_row)
+                    
+                    for j, idx in enumerate(indices[i:i+cols_per_row]):
+                        with cols[j]:
+                            img, true_label = test_dataset[idx]
+                            
+                            # Display image
+                            img_display = img.squeeze().numpy()
+                            img_display = (img_display * 0.5 + 0.5)  # Denormalize
+                            st.image(img_display, width=100, clamp=True)
+                            
+                            # Predict
+                            st.session_state.trainer.model.eval()
+                            with torch.no_grad():
+                                img_input = img.unsqueeze(0).to(st.session_state.device)
+                                
+                                # Handle Multi-Modal models
+                                if "Multi-Modal" in phase:
+                                    text = get_text_description(true_label, mode=text_mode if 'text_mode' in dir() else 'simple')
+                                    input_ids, attention_mask = encode_texts([text], device=st.session_state.device)
+                                    outputs = st.session_state.trainer.model(img_input, input_ids, attention_mask)
+                                else:
+                                    outputs = st.session_state.trainer.model(img_input)
+                                
+                                probabilities = torch.softmax(outputs, dim=1)
+                                confidence, predicted = torch.max(probabilities, 1)
+                                
+                                predicted_class = predicted.item()
+                                confidence_pct = confidence.item() * 100
+                            
+                            # Display results
+                            true_name = CLASS_NAMES[true_label]
+                            pred_name = CLASS_NAMES[predicted_class]
+                            
+                            if predicted_class == true_label:
+                                st.success(f"✓ {pred_name}")
+                                st.caption(f"{confidence_pct:.1f}%")
+                            else:
+                                st.error(f"✗ {pred_name}")
+                                st.caption(f"True: {true_name}")
+                                st.caption(f"{confidence_pct:.1f}%")
+        
+        # ===== BATCH EVALUATION MODE =====
+        else:  # Batch Evaluation
+            st.subheader("Batch Evaluation")
+            
+            # Load test dataset
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,), (0.5,))
+            ])
+            data_root = os.path.join(SCRIPT_DIR, "data")
+            test_dataset = datasets.FashionMNIST(data_root, train=False, download=True, transform=transform)
+            
+            eval_option = st.radio("Evaluation Scope", ["All Tasks", "Specific Task", "Specific Class"], horizontal=True)
+            
+            if eval_option == "All Tasks":
+                num_tasks_trained = len(st.session_state.trainer.replay_buffer.data) if hasattr(st.session_state.trainer, 'replay_buffer') and st.session_state.trainer.replay_buffer else num_tasks
+                
+                if st.button("Evaluate All Tasks", type="primary", use_container_width=True):
+                    with st.spinner("Evaluating..."):
+                        st.session_state.trainer.model.eval()
+                        
+                        results = []
+                        confusion_matrix = np.zeros((10, 10))
+                        
+                        with torch.no_grad():
+                            for task_id in range(num_tasks_trained):
+                                task_classes = [task_id*2, task_id*2+1]
+                                task_indices = [i for i, (_, label) in enumerate(test_dataset) if label in task_classes]
+                                task_subset = torch.utils.data.Subset(test_dataset, task_indices)
+                                task_loader = DataLoader(task_subset, batch_size=128, shuffle=False)
+                                
+                                correct = 0
+                                total = 0
+                                
+                                for images, labels in task_loader:
+                                    images = images.to(st.session_state.device)
+                                    labels = labels.to(st.session_state.device)
+                                    
+                                    # Handle Multi-Modal models
+                                    if "Multi-Modal" in phase:
+                                        texts = [get_text_description(int(label), mode=text_mode if 'text_mode' in dir() else 'simple') for label in labels]
+                                        input_ids, attention_mask = encode_texts(texts, device=st.session_state.device)
+                                        outputs = st.session_state.trainer.model(images, input_ids, attention_mask)
+                                    else:
+                                        outputs = st.session_state.trainer.model(images)
+                                    
+                                    _, predicted = torch.max(outputs, 1)
+                                    total += labels.size(0)
+                                    correct += (predicted == labels).sum().item()
+                                    
+                                    # Update confusion matrix
+                                    for t, p in zip(labels.cpu().numpy(), predicted.cpu().numpy()):
+                                        confusion_matrix[t][p] += 1
+                                
+                                accuracy = correct / total
+                                results.append({
+                                    'Task': f"Task {task_id}",
+                                    'Classes': f"{CLASS_NAMES[task_classes[0]]}, {CLASS_NAMES[task_classes[1]]}",
+                                    'Accuracy': f"{accuracy*100:.2f}%",
+                                    'Correct': correct,
+                                    'Total': total
+                                })
+                        
+                        # Display results table
+                        st.markdown("---")
+                        st.subheader("Task-wise Results")
+                        df = pd.DataFrame(results)
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                        
+                        # Overall accuracy
+                        overall_acc = sum([r['Correct'] for r in results]) / sum([r['Total'] for r in results])
+                        st.metric("Overall Accuracy", f"{overall_acc*100:.2f}%")
+                        
+                        # Confusion Matrix Heatmap
+                        st.markdown("---")
+                        st.subheader("Confusion Matrix")
+                        
+                        fig = go.Figure(data=go.Heatmap(
+                            z=confusion_matrix,
+                            x=CLASS_NAMES,
+                            y=CLASS_NAMES,
+                            colorscale='Blues',
+                            text=confusion_matrix.astype(int),
+                            texttemplate='%{text}',
+                            textfont={"size": 10},
+                            hovertemplate='True: %{y}<br>Pred: %{x}<br>Count: %{z}<extra></extra>'
+                        ))
+                        
+                        fig.update_layout(
+                            title="Confusion Matrix",
+                            xaxis_title="Predicted Class",
+                            yaxis_title="True Class",
+                            height=600,
+                            xaxis={'side': 'bottom'}
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            elif eval_option == "Specific Task":
+                task_id = st.selectbox("Select Task", range(num_tasks))
+                
+                if st.button("Evaluate Task", type="primary", use_container_width=True):
+                    with st.spinner("Evaluating..."):
+                        task_classes = [task_id*2, task_id*2+1]
+                        task_indices = [i for i, (_, label) in enumerate(test_dataset) if label in task_classes]
+                        task_subset = torch.utils.data.Subset(test_dataset, task_indices)
+                        task_loader = DataLoader(task_subset, batch_size=128, shuffle=False)
+                        
+                        st.session_state.trainer.model.eval()
+                        correct = 0
+                        total = 0
+                        
+                        with torch.no_grad():
+                            for images, labels in task_loader:
+                                images = images.to(st.session_state.device)
+                                labels = labels.to(st.session_state.device)
+                                
+                                # Handle Multi-Modal models
+                                if "Multi-Modal" in phase:
+                                    texts = [get_text_description(int(label), mode=text_mode if 'text_mode' in dir() else 'simple') for label in labels]
+                                    input_ids, attention_mask = encode_texts(texts, device=st.session_state.device)
+                                    outputs = st.session_state.trainer.model(images, input_ids, attention_mask)
+                                else:
+                                    outputs = st.session_state.trainer.model(images)
+                                
+                                _, predicted = torch.max(outputs, 1)
+                                total += labels.size(0)
+                                correct += (predicted == labels).sum().item()
+                        
+                        accuracy = correct / total
+                        
+                        st.markdown("---")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Task", f"Task {task_id}")
+                        with col2:
+                            st.metric("Classes", f"{CLASS_NAMES[task_classes[0]]}, {CLASS_NAMES[task_classes[1]]}")
+                        with col3:
+                            st.metric("Accuracy", f"{accuracy*100:.2f}%")
+            
+            else:  # Specific Class
+                class_name = st.selectbox("Select Class", CLASS_NAMES)
+                class_idx = CLASS_NAMES.index(class_name)
+                
+                if st.button("Evaluate Class", type="primary", use_container_width=True):
+                    with st.spinner("Evaluating..."):
+                        class_indices = [i for i, (_, label) in enumerate(test_dataset) if label == class_idx]
+                        class_subset = torch.utils.data.Subset(test_dataset, class_indices)
+                        class_loader = DataLoader(class_subset, batch_size=128, shuffle=False)
+                        
+                        st.session_state.trainer.model.eval()
+                        correct = 0
+                        total = 0
+                        predictions_count = {name: 0 for name in CLASS_NAMES}
+                        
+                        with torch.no_grad():
+                            for images, labels in class_loader:
+                                images = images.to(st.session_state.device)
+                                labels = labels.to(st.session_state.device)
+                                
+                                # Handle Multi-Modal models
+                                if "Multi-Modal" in phase:
+                                    texts = [get_text_description(int(label), mode=text_mode if 'text_mode' in dir() else 'simple') for label in labels]
+                                    input_ids, attention_mask = encode_texts(texts, device=st.session_state.device)
+                                    outputs = st.session_state.trainer.model(images, input_ids, attention_mask)
+                                else:
+                                    outputs = st.session_state.trainer.model(images)
+                                
+                                _, predicted = torch.max(outputs, 1)
+                                total += labels.size(0)
+                                correct += (predicted == labels).sum().item()
+                                
+                                # Count predictions
+                                for p in predicted.cpu().numpy():
+                                    predictions_count[CLASS_NAMES[p]] += 1
+                        
+                        accuracy = correct / total
+                        
+                        st.markdown("---")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Class", class_name)
+                        with col2:
+                            st.metric("Accuracy", f"{accuracy*100:.2f}%")
+                        with col3:
+                            st.metric("Samples", total)
+                        
+                        # Prediction distribution
+                        st.markdown("---")
+                        st.subheader("Prediction Distribution")
+                        
+                        fig = go.Figure(data=[
+                            go.Bar(
+                                x=list(predictions_count.keys()),
+                                y=list(predictions_count.values()),
+                                marker_color=['#FF4B4B' if name == class_name else '#CCCCCC' for name in predictions_count.keys()]
+                            )
+                        ])
+                        fig.update_layout(
+                            title=f"Where {class_name} samples were predicted",
+                            xaxis_title="Predicted Class",
+                            yaxis_title="Count",
+                            height=400
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
 
 # ===== HISTORY TAB =====
 with tab3:

@@ -9,6 +9,29 @@ import torch.nn.utils.prune as prune
 import numpy as np
 import copy
 
+def apply_quantization(model):
+    """
+    Apply aggressive INT8 quantization to reduce model size
+    FP32 (4 bytes) -> INT8 (1 byte) = 4x compression
+    """
+    try:
+        # Set model to eval mode for quantization
+        model.eval()
+        
+        # Dynamic quantization for Linear and Conv2d layers
+        quantized_model = torch.quantization.quantize_dynamic(
+            model,
+            {nn.Linear, nn.Conv2d},
+            dtype=torch.qint8
+        )
+        
+        print(f"  ✅ Quantization: FP32 → INT8 (4x theoretical compression)")
+        return quantized_model
+    except Exception as e:
+        print(f"  ⚠️  Quantization warning: {e}")
+        print("  Continuing with FP32 model...")
+        return model
+
 def prune_model(model, sparsity=0.3, method='magnitude', structured=True):
     """
     Prune model to reduce parameters
@@ -108,6 +131,10 @@ def structured_prune(model, sparsity, method='magnitude'):
     for module, param_name in parameters_to_prune:
         prune.remove(module, param_name)
     
+    # Apply quantization to actually reduce size (FP32 -> INT8)
+    print("\nApplying INT8 quantization for size reduction...")
+    model = apply_quantization(model)
+    
     return model
 
 def unstructured_prune(model, sparsity, method='magnitude'):
@@ -143,6 +170,10 @@ def unstructured_prune(model, sparsity, method='magnitude'):
     # Make permanent
     for module, param_name in parameters_to_prune:
         prune.remove(module, param_name)
+    
+    # Apply quantization to actually reduce size (FP32 -> INT8)
+    print("\nApplying INT8 quantization for size reduction...")
+    model = apply_quantization(model)
     
     return model
 
