@@ -12,8 +12,8 @@ class PEFTContinualTrainer(TrueContinualTrainer):
     TRUE Continual Learning with PEFT (LoRA)
     Only trains LoRA adapters (1-10% of parameters) and optionally unfreezes backbone layers.
     """
-    def __init__(self, model, use_replay=True, device="cuda", num_tasks=5, 
-                 buffer_size=500, lora_rank=24, lora_alpha=48, lora_dropout=0.0, 
+    def __init__(self, model, use_replay=True, device="cuda", num_tasks=5,
+                 lora_rank=24, lora_alpha=48, lora_dropout=0.0,
                  unfreeze_backbone=False, num_classes=None):
         """
         PEFT Continual Learning trainer

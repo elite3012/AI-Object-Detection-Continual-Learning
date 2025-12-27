@@ -88,20 +88,24 @@ else:
 # Strategy-specific params
 if "Experience Replay" == phase:
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
-    buffer_size = st.sidebar.slider("Buffer Size (per class)", 100, 1000, 500)
+    if use_replay:
+        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
 elif "PEFT" in phase:
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
-    buffer_size = st.sidebar.slider("Buffer Size (per class)", 100, 1000, 500)
+    if use_replay:
+        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
     lora_rank = st.sidebar.slider("LoRA Rank", 8, 64, 24)
     lora_alpha = st.sidebar.slider("LoRA Alpha", 16, 128, 48)
 elif "Multi-Modal" in phase:
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
-    buffer_size = st.sidebar.slider("Buffer Size (per class)", 100, 1000, 500)
+    if use_replay:
+        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
     fusion_type = st.sidebar.selectbox("Fusion Strategy", ["concat", "cross_attention", "gated"], index=0)
     text_mode = st.sidebar.selectbox("Text Mode", ["simple", "rich", "attributes"], index=0)
 else:  # Hardware Optimization
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
-    buffer_size = st.sidebar.slider("Buffer Size (per class)", 100, 1000, 500)
+    if use_replay:
+        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
     compression_strategy = st.sidebar.selectbox("Compression Strategy", ["end", "gradual", "per_task"], index=1)
     target_hardware = st.sidebar.selectbox("Target Hardware", ["mobile", "gpu", "edge"], index=0)
 
@@ -172,6 +176,31 @@ with tab1:
             st.subheader("Forgetting Analysis")
             chart_forgetting = st.empty()
         
+        # Buffer Analysis Section
+        st.markdown("---")
+        col_buffer1, col_buffer2 = st.columns(2)
+        
+        with col_buffer1:
+            st.subheader("Buffer Distribution")
+            chart_buffer_dist = st.empty()
+        
+        with col_buffer2:
+            st.subheader("Validation Results (30% Test Set)")
+            chart_per_class = st.empty()
+        
+        # Buffer Effectiveness Metrics
+        st.markdown("---")
+        st.subheader("Buffer Effectiveness Analysis")
+        col_eff1, col_eff2, col_eff3, col_eff4 = st.columns(4)
+        with col_eff1:
+            buffer_util_metric = st.empty()
+        with col_eff2:
+            buffer_samples_metric = st.empty()
+        with col_eff3:
+            avg_forgetting_metric = st.empty()
+        with col_eff4:
+            retention_metric = st.empty()
+        
         # Detailed table
         st.markdown("---")
         st.subheader("Detailed Metrics")
@@ -183,7 +212,8 @@ with tab1:
             'classes': [],
             'accuracies': [],  # List of lists: each task's accuracy on all tasks so far
             'training_times': [],
-            'forgetting': []
+            'forgetting': [],
+            'buffer_stats': []  # Buffer statistics after each task
         }
         
         try:
@@ -197,8 +227,7 @@ with tab1:
                     model=model,
                     use_replay=use_replay,
                     device=st.session_state.device,
-                    num_tasks=num_tasks,
-                    buffer_size=buffer_size
+                    num_tasks=num_tasks
                 )
             elif "PEFT" in phase:
                 model = SimpleCNNMulticlass(num_classes=10)
@@ -207,7 +236,6 @@ with tab1:
                     use_replay=use_replay,
                     device=st.session_state.device,
                     num_tasks=num_tasks,
-                    buffer_size=buffer_size,
                     lora_rank=lora_rank,
                     lora_alpha=lora_alpha,
                     lora_dropout=0.0,
@@ -234,7 +262,6 @@ with tab1:
                     use_replay=use_replay,
                     device=st.session_state.device,
                     num_tasks=num_tasks,
-                    buffer_size=buffer_size,
                     text_mode=text_mode
                 )
             else:  # Hardware Optimization
@@ -242,7 +269,6 @@ with tab1:
                 trainer = HardwareContinualTrainer(
                     model=model,
                     device=st.session_state.device,
-                    buffer_size=buffer_size,
                     compression_strategy=compression_strategy,
                     target_hardware=target_hardware,
                     pruning_schedule=[0.0, 0.1, 0.2, 0.3, 0.5]
@@ -298,6 +324,15 @@ with tab1:
                 
                 def on_epoch_end(self, task_id, epoch, avg_loss):
                     self.ui['epoch_info'].write(f"{epoch+1}/{self.epochs_per_task} (Loss: {avg_loss:.4f})")
+                
+                def on_task_end(self, task_id, val_per_class, prev_tasks_val_results=None, buffer_stats=None):
+                    """Display per-class validation results after task completion"""
+                    # Store buffer statistics for UI visualization
+                    if buffer_stats:
+                        if 'buffer_stats' not in training_data:
+                            training_data['buffer_stats'] = []
+                        training_data['buffer_stats'].append(buffer_stats)
+                    # Results displayed in terminal and charts below
             
             # Setup UI callback
             ui_components = {
@@ -396,6 +431,22 @@ with tab1:
                 
                 training_data['accuracies'].append(task_accuracies)
                 
+                # Get buffer statistics if available
+                if use_replay and hasattr(trainer, 'replay_buffer') and trainer.replay_buffer:
+                    buffer_stats = trainer.replay_buffer.get_statistics()
+                    training_data['buffer_stats'].append(buffer_stats)
+                else:
+                    training_data['buffer_stats'].append(None)
+                
+                # Notify callback with buffer stats
+                if callback:
+                    callback.on_task_end(
+                        task_id=task_id,
+                        val_per_class=None,
+                        prev_tasks_val_results=None,
+                        buffer_stats=training_data['buffer_stats'][-1]
+                    )
+                
                 # Calculate forgetting
                 if task_id > 0:
                     forgetting_vals = []
@@ -477,6 +528,129 @@ with tab1:
                     )
                     
                     chart_forgetting.plotly_chart(fig_forg, use_container_width=True)
+                
+                # Update Buffer Distribution Chart
+                if use_replay and training_data['buffer_stats'][-1] is not None:
+                    buffer_stats = training_data['buffer_stats'][-1]
+                    
+                    # Extract per-class counts
+                    per_class_count = buffer_stats['per_class_count']
+                    
+                    classes_in_buffer = sorted(per_class_count.keys())
+                    counts = [per_class_count[c] for c in classes_in_buffer]
+                    class_labels = [f"Class {c}\n{CLASS_NAMES[c]}" for c in classes_in_buffer]
+                    
+                    # Create simple bar chart showing actual data
+                    fig_buffer = go.Figure()
+                    
+                    # Add bars for actual samples
+                    fig_buffer.add_trace(go.Bar(
+                        x=class_labels,
+                        y=counts,
+                        marker_color='#4CAF50',
+                        text=[f"{count}" for count in counts],
+                        textposition='inside',
+                        textfont=dict(size=12, color='white'),
+                        hovertemplate='%{x}<br>Samples: %{y}<extra></extra>'
+                    ))
+                    
+                    fig_buffer.update_layout(
+                        title=f"Buffer Distribution (Task {task_id}) - Total: {buffer_stats['total_samples']}/5000 samples",
+                        xaxis_title="Class",
+                        yaxis_title="Samples per Class",
+                        height=400,
+                        showlegend=False
+                    )
+                    
+                    chart_buffer_dist.plotly_chart(fig_buffer, use_container_width=True)
+                    
+                    # Update buffer effectiveness metrics
+                    utilization = buffer_stats['utilization']
+                    total_samples = buffer_stats['total_samples']
+                    
+                    buffer_util_metric.metric(
+                        "Buffer Utilization",
+                        f"{utilization:.1f}%",
+                        delta=None
+                    )
+                    
+                    buffer_samples_metric.metric(
+                        "Total Samples",
+                        f"{total_samples}/5000",
+                        delta=None
+                    )
+                    
+                    if task_id > 0:
+                        avg_forg_val = training_data['forgetting'][-1]
+                        retention_val = 100 - avg_forg_val
+                        
+                        avg_forgetting_metric.metric(
+                            "Avg Forgetting",
+                            f"{avg_forg_val:.2f}%",
+                            delta=f"{avg_forg_val - training_data['forgetting'][-2]:.2f}%" if task_id > 1 else None,
+                            delta_color="inverse"
+                        )
+                        
+                        retention_metric.metric(
+                            "Knowledge Retained",
+                            f"{retention_val:.1f}%",
+                            delta=None
+                        )
+                
+                # Update Validation Results Table
+                validation_table_data = []
+                for test_task_id in range(task_id + 1):
+                    task_acc = training_data['accuracies'][task_id][test_task_id]
+                    
+                    # Get 30% validation data for this task
+                    test_classes = [test_task_id*2, test_task_id*2+1]
+                    from data.fashion_mnist_true_continual import get_task_loaders_true_continual
+                    _, val_loader_temp, _, _ = get_task_loaders_true_continual(
+                        test_task_id, batch_size=128, root=data_root, train_ratio=0.7
+                    )
+                    
+                    # Get per-class accuracy on validation set
+                    class_correct = {c: 0 for c in test_classes}
+                    class_total = {c: 0 for c in test_classes}
+                    
+                    trainer.model.eval()
+                    with torch.no_grad():
+                        for images, labels in val_loader_temp:
+                            images = images.to(trainer.device)
+                            labels = labels.to(trainer.device)
+                            
+                            if "Multi-Modal" in phase:
+                                texts = [get_text_description(int(label), mode=text_mode) for label in labels]
+                                input_ids, attention_mask = encode_texts(texts, device=trainer.device)
+                                outputs = trainer.model(images, input_ids, attention_mask)
+                            else:
+                                outputs = trainer.model(images)
+                            
+                            _, predicted = torch.max(outputs, 1)
+                            
+                            for pred, label in zip(predicted, labels):
+                                label_item = int(label)
+                                if label_item in class_total:
+                                    class_total[label_item] += 1
+                                    if pred == label:
+                                        class_correct[label_item] += 1
+                    
+                    # Build table row
+                    for c in test_classes:
+                        if class_total[c] > 0:
+                            acc = (class_correct[c] / class_total[c]) * 100
+                            validation_table_data.append({
+                                'Task': f"Task {test_task_id}",
+                                'Class': f"C{c} {CLASS_NAMES[c]}",
+                                'Correct': class_correct[c],
+                                'Total': class_total[c],
+                                'Accuracy': f"{acc:.2f}%"
+                            })
+                
+                # Display validation results table
+                if validation_table_data:
+                    df_val = pd.DataFrame(validation_table_data)
+                    chart_per_class.dataframe(df_val, use_container_width=True, hide_index=True)
                 
                 # Update table
                 table_data = []

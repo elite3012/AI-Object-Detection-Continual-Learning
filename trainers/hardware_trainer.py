@@ -27,8 +27,7 @@ class HardwareContinualTrainer(TrueContinualTrainer):
             model=model,
             use_replay=True,
             device=device,
-            num_tasks=5,
-            buffer_size=buffer_size
+            num_tasks=5
         )
         
         self.compression_strategy = compression_strategy

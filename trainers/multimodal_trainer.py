@@ -1,14 +1,9 @@
-"""
-Multi-Modal Continual Learning Trainer
-Combines vision and text encoders for robust continual learning
-"""
-
 import torch
 from torch import nn, optim
-from data.fashion_mnist_true_continual import get_task_loaders_true_continual, TASK_THEMES
+from data.fashion_mnist_true_continual import get_task_loaders_true_continual, TASK_THEMES, CLASS_NAMES
 from data.fashion_text import get_text_description, CLASS_NAMES
 from models.text_encoder import encode_texts
-from eval.metrics import accuracy
+from eval.metrics import accuracy, per_class_accuracy
 from replay.buffer import ReplayBuffer
 
 class MultiModalContinualTrainer:
@@ -16,8 +11,8 @@ class MultiModalContinualTrainer:
     Multi-modal continual learning with Experience Replay
     Trains both vision and text encoders jointly
     """
-    def __init__(self, multimodal_model, use_replay=True, device="cuda", 
-                 num_tasks=5, buffer_size=500, text_mode='simple', text_dropout=0.3):
+    def __init__(self, multimodal_model, use_replay=True, device="cuda",
+                 num_tasks=5, text_mode='simple', text_dropout=0.3):
         """
         Args:
             multimodal_model: MultiModalClassifier instance
@@ -36,11 +31,13 @@ class MultiModalContinualTrainer:
         self.text_dropout = text_dropout  # NEW: Force model to use vision too
         
         # Replay buffer stores (image, label, text_input_ids, text_mask)
-        self.replay_buffer = ReplayBuffer(m_per_class=buffer_size) if use_replay else None
+        self.replay_buffer = ReplayBuffer(samples_per_class=500, max_classes=10) if use_replay else None
         
         # Track results
         self.task_acc_history = []
+        self.per_class_acc_history = []  # NEW: Track per-class accuracies
         self.all_test_loaders = []
+        self.all_val_loaders = []  # NEW: Track validation loaders
         
     def train_one_task(self, train_loader, test_loader, epochs=10, lr=0.0005, callback=None, task_id=0):
         """
@@ -193,22 +190,115 @@ class MultiModalContinualTrainer:
             print(f"TASK {task_id}: {TASK_THEMES.get(task_id, f'Task {task_id}')}")
             print(f"{'-'*60}")
             
-            # Get data for current task
-            train_loader, test_loader, classes = get_task_loaders_true_continual(
+            # Get data for current task (70% train, 30% val)
+            train_loader, val_loader, test_loader, classes = get_task_loaders_true_continual(
                 task_id=task_id,
                 batch_size=batch_size,
-                root=data_root
+                root=data_root,
+                train_ratio=0.7
             )
             self.all_test_loaders.append(test_loader)
+            self.all_val_loaders.append(val_loader)
             
             # Train
-            self.train_one_task(train_loader, test_loader, epochs=epochs_per_task, lr=lr)
+            self.train_one_task(train_loader, val_loader, epochs=epochs_per_task, lr=lr)
             
-            # Evaluate on all tasks seen so far
+            # Validation evaluation after task
+            print(f"\n{'═'*70}")
+            print(f"VALIDATION TESTING LOOP - After Task {task_id} Training Complete")
+            print(f"{'═'*70}")
+            
+            # Test on ALL validation sets
+            print(f"\n[Testing on ALL Tasks - Validation Set (30% split)]")
+            print(f"{'─'*70}")
+            
+            for test_task_id in range(task_id + 1):
+                test_val_loader = self.all_val_loaders[test_task_id]
+                test_classes = get_task_loaders_true_continual(test_task_id, batch_size, data_root, train_ratio=0.7)[3]
+                
+                # Overall accuracy
+                task_acc = self.evaluate_task(test_val_loader)
+                
+                # Per-class accuracy
+                per_class = self.evaluate_per_class(test_val_loader)
+                
+                status = "✓ CURRENT" if test_task_id == task_id else "  Previous"
+                print(f"\n{status} Task {test_task_id} ({TASK_THEMES[test_task_id]}): {task_acc*100:.2f}%")
+                
+                for class_id in test_classes:
+                    class_name = CLASS_NAMES[class_id]
+                    acc = per_class[class_id]
+                    
+                    if acc >= 0.90:
+                        indicator = "🟢"
+                    elif acc >= 0.80:
+                        indicator = "🟡"
+                    elif acc >= 0.70:
+                        indicator = "🟠"
+                    else:
+                        indicator = "🔴"
+                    
+                    bar_length = int(acc * 40)
+                    bar = "█" * bar_length + "░" * (40 - bar_length)
+                    
+                    print(f"    {indicator} Class {class_id} ({class_name:15s}): [{bar}] {acc*100:5.1f}%")
+            
+            print(f"{'─'*70}")
+            
+            # Buffer analysis
+            if self.replay_buffer:
+                self.replay_buffer.analyze_buffer(class_names=CLASS_NAMES)
+                
+                print(f"{'═'*70}")
+                print(f"BUFFER EFFECTIVENESS PROOF")
+                print(f"{'═'*70}\n")
+                
+                if task_id > 0:
+                    print(f"[Forgetting Analysis]")
+                    for prev_task_id in range(task_id):
+                        initial_acc = self.task_acc_history[prev_task_id][prev_task_id]
+                        current_acc = self.evaluate_task(self.all_val_loaders[prev_task_id])
+                        forgetting = (initial_acc - current_acc) * 100
+                        
+                        if forgetting < 5:
+                            status = "✓ Excellent retention"
+                        elif forgetting < 10:
+                            status = "○ Good retention"
+                        elif forgetting < 15:
+                            status = "△ Moderate forgetting"
+                        else:
+                            status = "✗ Significant forgetting"
+                        
+                        print(f"  Task {prev_task_id}: {initial_acc*100:.1f}% → {current_acc*100:.1f}% "
+                              f"(Δ {forgetting:+.1f}%) {status}")
+                    
+                    avg_forgetting = sum(
+                        (self.task_acc_history[i][i] - self.evaluate_task(self.all_val_loaders[i])) * 100
+                        for i in range(task_id)
+                    ) / task_id
+                    
+                    print(f"\n  Average forgetting: {avg_forgetting:.2f}%")
+                    print(f"  Buffer effectiveness: {100 - avg_forgetting:.1f}% knowledge retained")
+                    
+                    if avg_forgetting < 10:
+                        print(f"  ✓ Buffer is HIGHLY EFFECTIVE at preventing forgetting!")
+                    elif avg_forgetting < 20:
+                        print(f"  ○ Buffer is MODERATELY EFFECTIVE")
+                    else:
+                        print(f"  △ Buffer shows LIMITED effectiveness")
+                
+                print(f"\n{'═'*70}\n")
+            
+            # Evaluate on all test sets
             task_accuracies = [0.0] * self.num_tasks
+            all_per_class = {}
+            
             for i in range(task_id + 1):
                 acc = self.evaluate_task(self.all_test_loaders[i])
                 task_accuracies[i] = acc
+                
+                test_per_class = self.evaluate_per_class(self.all_test_loaders[i])
+                all_per_class[i] = test_per_class
             
             print(f"[INFO] Task {task_id} training complete: {task_accuracies[task_id]*100:.2f}%")
             if task_id > 0:
@@ -216,6 +306,7 @@ class MultiModalContinualTrainer:
                 print(f"[INFO] Previous tasks: [{prev_accs}]")
             
             self.task_acc_history.append(task_accuracies)
+            self.per_class_acc_history.append(all_per_class)
         
         # Final evaluation
         self._print_final_results()
@@ -277,3 +368,38 @@ class MultiModalContinualTrainer:
             "final_accuracies": final_accs,
             "accuracy_matrix": self.task_acc_history
         }
+    
+    def evaluate_per_class(self, test_loader):
+        """Evaluate per-class accuracy on a test set"""
+        self.model.eval()
+        class_correct = {i: 0 for i in range(10)}
+        class_total = {i: 0 for i in range(10)}
+        
+        with torch.no_grad():
+            for images, labels in test_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                
+                # Get text descriptions
+                texts = [get_text_description(int(label), mode=self.text_mode) for label in labels]
+                input_ids, attention_mask = encode_texts(texts, device=self.device)
+                
+                # Forward
+                logits = self.model(images, input_ids, attention_mask)
+                pred = logits.argmax(1)
+                
+                # Count per class
+                for label, prediction in zip(labels, pred):
+                    label_item = label.item()
+                    class_total[label_item] += 1
+                    if prediction == label:
+                        class_correct[label_item] += 1
+        
+        # Calculate accuracy per class
+        class_accuracies = {}
+        for class_id in range(10):
+            if class_total[class_id] > 0:
+                class_accuracies[class_id] = class_correct[class_id] / class_total[class_id]
+            else:
+                class_accuracies[class_id] = 0.0
+        
+        return class_accuracies
