@@ -213,7 +213,8 @@ with tab1:
             'accuracies': [],  # List of lists: each task's accuracy on all tasks so far
             'training_times': [],
             'forgetting': [],
-            'buffer_stats': []  # Buffer statistics after each task
+            'buffer_stats': [],  # Buffer statistics after each task
+            'validation_snapshots': []  # Validation results snapshot after each task completion
         }
         
         try:
@@ -431,6 +432,65 @@ with tab1:
                 
                 training_data['accuracies'].append(task_accuracies)
                 
+                # === CAPTURE VALIDATION SNAPSHOT FOR THIS TASK ===
+                # This preserves the testing loop results RIGHT AFTER this task completes
+                validation_snapshot = {
+                    'task_id': task_id,
+                    'task_name': f"Task {task_id}",
+                    'classes': training_data['classes'][task_id],
+                    'results': []  # Will store per-class results
+                }
+                
+                # Test on ALL tasks learned so far (0 to current)
+                for test_task_id in range(task_id + 1):
+                    test_classes = [test_task_id*2, test_task_id*2+1]
+                    
+                    # Get 30% validation data for this task
+                    from data.fashion_mnist_true_continual import get_task_loaders_true_continual
+                    _, val_loader_temp, _, _ = get_task_loaders_true_continual(
+                        test_task_id, batch_size=128, root=data_root, train_ratio=0.7
+                    )
+                    
+                    # Get per-class accuracy on validation set
+                    class_correct = {c: 0 for c in test_classes}
+                    class_total = {c: 0 for c in test_classes}
+                    
+                    trainer.model.eval()
+                    with torch.no_grad():
+                        for images, labels in val_loader_temp:
+                            images = images.to(trainer.device)
+                            labels = labels.to(trainer.device)
+                            
+                            if "Multi-Modal" in phase:
+                                texts = [get_text_description(int(label), mode=text_mode) for label in labels]
+                                input_ids, attention_mask = encode_texts(texts, device=trainer.device)
+                                outputs = trainer.model(images, input_ids, attention_mask)
+                            else:
+                                outputs = trainer.model(images)
+                            
+                            _, predicted = torch.max(outputs, 1)
+                            
+                            for pred, label in zip(predicted, labels):
+                                label_item = int(label)
+                                if label_item in class_total:
+                                    class_total[label_item] += 1
+                                    if pred == label:
+                                        class_correct[label_item] += 1
+                    
+                    # Store results for this tested task
+                    for c in test_classes:
+                        if class_total[c] > 0:
+                            validation_snapshot['results'].append({
+                                'tested_task': f"Task {test_task_id}",
+                                'class_id': c,
+                                'class_name': CLASS_NAMES[c],
+                                'correct': class_correct[c],
+                                'total': class_total[c],
+                                'accuracy': (class_correct[c] / class_total[c]) * 100
+                            })
+                
+                training_data['validation_snapshots'].append(validation_snapshot)
+                
                 # Get buffer statistics if available
                 if use_replay and hasattr(trainer, 'replay_buffer') and trainer.replay_buffer:
                     buffer_stats = trainer.replay_buffer.get_statistics()
@@ -597,60 +657,46 @@ with tab1:
                             delta=None
                         )
                 
-                # Update Validation Results Table
-                validation_table_data = []
-                for test_task_id in range(task_id + 1):
-                    task_acc = training_data['accuracies'][task_id][test_task_id]
+                # Update Validation Results - Show Progressive Testing Loop Snapshots
+                if len(training_data['validation_snapshots']) > 0:
+                    # Create comprehensive table showing all snapshots
+                    all_validation_data = []
                     
-                    # Get 30% validation data for this task
-                    test_classes = [test_task_id*2, test_task_id*2+1]
-                    from data.fashion_mnist_true_continual import get_task_loaders_true_continual
-                    _, val_loader_temp, _, _ = get_task_loaders_true_continual(
-                        test_task_id, batch_size=128, root=data_root, train_ratio=0.7
-                    )
-                    
-                    # Get per-class accuracy on validation set
-                    class_correct = {c: 0 for c in test_classes}
-                    class_total = {c: 0 for c in test_classes}
-                    
-                    trainer.model.eval()
-                    with torch.no_grad():
-                        for images, labels in val_loader_temp:
-                            images = images.to(trainer.device)
-                            labels = labels.to(trainer.device)
-                            
-                            if "Multi-Modal" in phase:
-                                texts = [get_text_description(int(label), mode=text_mode) for label in labels]
-                                input_ids, attention_mask = encode_texts(texts, device=trainer.device)
-                                outputs = trainer.model(images, input_ids, attention_mask)
-                            else:
-                                outputs = trainer.model(images)
-                            
-                            _, predicted = torch.max(outputs, 1)
-                            
-                            for pred, label in zip(predicted, labels):
-                                label_item = int(label)
-                                if label_item in class_total:
-                                    class_total[label_item] += 1
-                                    if pred == label:
-                                        class_correct[label_item] += 1
-                    
-                    # Build table row
-                    for c in test_classes:
-                        if class_total[c] > 0:
-                            acc = (class_correct[c] / class_total[c]) * 100
-                            validation_table_data.append({
-                                'Task': f"Task {test_task_id}",
-                                'Class': f"C{c} {CLASS_NAMES[c]}",
-                                'Correct': class_correct[c],
-                                'Total': class_total[c],
-                                'Accuracy': f"{acc:.2f}%"
+                    for snapshot in training_data['validation_snapshots']:
+                        completed_task_id = snapshot['task_id']
+                        
+                        # Add section header row
+                        all_validation_data.append({
+                            'After Training': f"═══ AFTER TASK {completed_task_id} COMPLETED ═══",
+                            'Tested On': '',
+                            'Class': '',
+                            'Correct': '',
+                            'Total': '',
+                            'Accuracy': ''
+                        })
+                        
+                        # Add all test results from this snapshot
+                        for result in snapshot['results']:
+                            all_validation_data.append({
+                                'After Training': f"Task {completed_task_id}",
+                                'Tested On': result['tested_task'],
+                                'Class': f"C{result['class_id']} {result['class_name']}",
+                                'Correct': result['correct'],
+                                'Total': result['total'],
+                                'Accuracy': f"{result['accuracy']:.2f}%"
                             })
-                
-                # Display validation results table
-                if validation_table_data:
-                    df_val = pd.DataFrame(validation_table_data)
-                    chart_per_class.dataframe(df_val, use_container_width=True, hide_index=True)
+                    
+                    # Display comprehensive validation table
+                    df_val = pd.DataFrame(all_validation_data)
+                    
+                    # Style the table
+                    def highlight_headers(row):
+                        if '═══' in str(row['After Training']):
+                            return ['background-color: #2c3e50; color: white; font-weight: bold'] * len(row)
+                        return [''] * len(row)
+                    
+                    styled_df = df_val.style.apply(highlight_headers, axis=1)
+                    chart_per_class.dataframe(styled_df, use_container_width=True, hide_index=True, height=600)
                 
                 # Update table
                 table_data = []
