@@ -1,0 +1,120 @@
+<svg width="1200" height="560" viewBox="0 0 1200 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="560" rx="24" fill="#F7FAFC"/>
+  <rect x="32" y="32" width="1136" height="496" rx="22" fill="white" stroke="#D9E2EC" stroke-width="2"/>
+  <text x="64" y="94" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">
+    Continual Learning System: recruiter overview
+  </text>
+  <text x="64" y="130" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="18">
+    A benchmark-to-demo pipeline for sequential clothes classification, parameter-efficient updates, multimodal fusion, and deployment-aware compression.
+  </text>
+  <rect x="64" y="164" width="1072" height="56" rx="14" fill="#EFF6FF" stroke="#BFDBFE"/>
+  <text x="92" y="198" fill="#1D4ED8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">
+    Scope note
+  </text>
+  <text x="200" y="198" fill="#334E68" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    Current implementation focuses on Fashion-MNIST clothing classification under continual learning, not full object detection.
+  </text>
+  <rect x="64" y="254" width="188" height="194" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="84" y="292" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">
+    1. Experience Replay
+  </text>
+  <text x="84" y="324" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Fixed 5,000-sample ring buffer
+  </text>
+  <text x="84" y="350" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Balanced sampling across classes
+  </text>
+  <text x="84" y="376" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    FIFO replacement to keep memory
+  </text>
+  <text x="84" y="402" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    bounded while tasks increase
+  </text>
+  <text x="84" y="432" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">
+    Goal: reduce catastrophic forgetting
+  </text>
+  <rect x="274" y="254" width="188" height="194" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="294" y="292" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">
+    2. PEFT / LoRA
+  </text>
+  <text x="294" y="324" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Low-rank adapters injected into
+  </text>
+  <text x="294" y="350" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    convolution and linear layers
+  </text>
+  <text x="294" y="376" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Rank / alpha configurable in UI
+  </text>
+  <text x="294" y="402" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Focus on cheaper continual updates
+  </text>
+  <text x="294" y="432" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">
+    Goal: better efficiency trade-offs
+  </text>
+  <rect x="484" y="254" width="188" height="194" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="504" y="292" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">
+    3. Multimodal Fusion
+  </text>
+  <text x="504" y="324" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Vision encoder + text encoder
+  </text>
+  <text x="504" y="350" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Concat, gated, and cross-attention
+  </text>
+  <text x="504" y="376" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Text descriptions add semantic cues
+  </text>
+  <text x="504" y="402" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    for ambiguous visual classes
+  </text>
+  <text x="504" y="432" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">
+    Goal: accuracy lift over vision-only
+  </text>
+  <rect x="694" y="254" width="188" height="194" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="714" y="292" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">
+    4. Hardware Optimization
+  </text>
+  <text x="714" y="324" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Structured pruning and INT8 / FP16
+  </text>
+  <text x="714" y="350" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Mobile, GPU, edge, cloud presets
+  </text>
+  <text x="714" y="376" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Compression and latency benchmarks
+  </text>
+  <text x="714" y="402" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    built into the workflow
+  </text>
+  <text x="714" y="432" fill="#1F2937" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">
+    Goal: deployment-ready model sizes
+  </text>
+  <rect x="904" y="254" width="232" height="194" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="924" y="292" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">
+    5. Streamlit Demo Layer
+  </text>
+  <text x="924" y="324" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Sidebar controls for every phase
+  </text>
+  <text x="924" y="350" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Plotly charts for accuracy, forgetting,
+  </text>
+  <text x="924" y="376" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    buffer distribution, and timing
+  </text>
+  <text x="924" y="402" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    Image upload plus preprocessing-based
+  </text>
+  <text x="924" y="428" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    inference for interactive testing
+  </text>
+  <path d="M252 351H274" stroke="#9FB3C8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M462 351H484" stroke="#9FB3C8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M672 351H694" stroke="#9FB3C8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M882 351H904" stroke="#9FB3C8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="263" cy="351" r="5" fill="#9FB3C8"/>
+  <circle cx="473" cy="351" r="5" fill="#9FB3C8"/>
+  <circle cx="683" cy="351" r="5" fill="#9FB3C8"/>
+  <circle cx="893" cy="351" r="5" fill="#9FB3C8"/>
+</svg>

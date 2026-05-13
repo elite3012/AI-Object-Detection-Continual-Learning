@@ -1,0 +1,84 @@
+<svg width="1200" height="480" viewBox="0 0 1200 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="480" rx="24" fill="#F7FAFC"/>
+  <rect x="32" y="32" width="1136" height="416" rx="22" fill="white" stroke="#D9E2EC" stroke-width="2"/>
+  <text x="64" y="92" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">
+    Reported results snapshot
+  </text>
+  <text x="64" y="126" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="18">
+    Metrics below are taken from the project reports and summarize the best-performing experimental configurations.
+  </text>
+  <rect x="64" y="164" width="242" height="204" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="88" y="206" fill="#1D4ED8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">
+    Experience Replay
+  </text>
+  <text x="88" y="266" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="700">
+    ~86%
+  </text>
+  <text x="88" y="298" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    knowledge retention across
+  </text>
+  <text x="88" y="322" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    sequential tasks with a fixed
+  </text>
+  <text x="88" y="346" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    5,000-sample replay buffer
+  </text>
+  <rect x="328" y="164" width="242" height="204" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="352" y="206" fill="#1D4ED8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">
+    PEFT / LoRA
+  </text>
+  <text x="352" y="266" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="700">
+    88.2%
+  </text>
+  <text x="352" y="298" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    final accuracy at rank 24,
+  </text>
+  <text x="352" y="322" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    alpha 48, with an 85% reduction
+  </text>
+  <text x="352" y="346" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    in optimizer-state memory
+  </text>
+  <rect x="592" y="164" width="242" height="204" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="616" y="206" fill="#1D4ED8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">
+    Multimodal Fusion
+  </text>
+  <text x="616" y="266" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="700">
+    99.49%
+  </text>
+  <text x="616" y="298" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    best reported accuracy,
+  </text>
+  <text x="616" y="322" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    a +10.25 point lift over the
+  </text>
+  <text x="616" y="346" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    vision-only baseline
+  </text>
+  <rect x="856" y="164" width="280" height="204" rx="18" fill="#F8FAFC" stroke="#D9E2EC"/>
+  <text x="880" y="206" fill="#1D4ED8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">
+    Hardware Optimization
+  </text>
+  <text x="880" y="258" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="700">
+    5.6 MB
+  </text>
+  <text x="880" y="286" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    mobile-target model size
+  </text>
+  <text x="880" y="320" fill="#102A43" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">
+    45 ms CPU / 4 ms GPU
+  </text>
+  <text x="880" y="350" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    reported inference times after
+  </text>
+  <text x="880" y="374" fill="#486581" font-family="Segoe UI, Arial, sans-serif" font-size="17">
+    pruning and quantization presets
+  </text>
+  <rect x="64" y="390" width="1072" height="28" rx="10" fill="#EFF6FF"/>
+  <text x="84" y="409" fill="#1D4ED8" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">
+    Smoke-checked locally on 2026-05-13:
+  </text>
+  <text x="332" y="409" fill="#334E68" font-family="Segoe UI, Arial, sans-serif" font-size="16">
+    compileall pass, app import pass, dataloader and model forward pass verified, LoRA insertion and hardware preset initialization verified.
+  </text>
+</svg>

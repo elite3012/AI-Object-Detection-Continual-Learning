@@ -1,327 +1,202 @@
-# Continual Learning System
+# Continual Learning System for Clothing Classification
 
-A production-ready continual learning framework for sequential fashion classification with catastrophic forgetting mitigation. Built with PyTorch and Streamlit.
+A recruiter-friendly showcase of a multi-phase continual learning project built with PyTorch and Streamlit, covering replay-based learning, PEFT/LoRA, multimodal fusion, and deployment-aware compression.
 
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch 2.5.1](https://img.shields.io/badge/pytorch-2.5.1-red.svg)](https://pytorch.org/)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/pytorch-2.5.1-red.svg)](https://pytorch.org/)
 [![Streamlit](https://img.shields.io/badge/streamlit-1.31.0-green.svg)](https://streamlit.io/)
-[![CUDA 12.1](https://img.shields.io/badge/cuda-12.1-green.svg)](https://developer.nvidia.com/cuda-downloads)
+[![Status](https://img.shields.io/badge/status-smoke_checked-1f9d55.svg)](#validation-on-the-current-codebase)
 
-## Overview
+> Built as a 3-member AI course project at HCMIU. This README focuses on the implemented system, measured outcomes, and current codebase status.
 
-This project implements a comprehensive continual learning system that addresses the **catastrophic forgetting** problem in neural networks. When models learn new tasks sequentially, they typically forget previously learned information. Our system maintains **89.24% accuracy** across all tasks with **less than 2% forgetting** through four integrated learning strategies.
+> Scope note: despite the repository name, the current implementation is a continual clothing classification benchmark on Fashion-MNIST rather than a full object detection pipeline.
 
-### Key Features
+![Pipeline overview](assets/pipeline-overview.svg)
+![Results snapshot](assets/results-snapshot.svg)
 
-- **Experience Replay**: Ring buffer with 500 samples/class prevents forgetting
-- **PEFT/LoRA**: 95% parameter reduction while maintaining accuracy
-- **Multi-Modal Learning**: Vision + Text fusion improves accuracy by 10.25%
-- **Hardware Optimization**: Model compression up to 4x for mobile deployment
-- **Web Interface**: Real-time training visualization with Plotly charts
-- **Interactive Testing**: Upload images or use webcam with preprocessing pipeline
+## If you have 30 seconds
 
-## Architecture
+- This project addresses catastrophic forgetting when a model must learn new classes sequentially.
+- It combines Experience Replay, PEFT/LoRA, vision-text multimodal fusion, and hardware-aware compression in one end-to-end system.
+- It includes a usable Streamlit demo with training controls, Plotly dashboards, and image-based inference.
+- The current repository has been smoke-checked locally for imports, dataloading, model forward pass, and key module initialization.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Web Interface                       │
-│              (Streamlit + Plotly)                    │
-└──────────────────┬──────────────────────────────────┘
-                   │
-        ┌──────────┴──────────┐
-        │                     │
-   ┌────▼────┐          ┌────▼────┐
-   │Training │          │ Testing │
-   │  Phase  │          │  Phase  │
-   └────┬────┘          └────┬────┘
-        │                    │
-   ┌────▼─────────────────────▼────┐
-   │     Continual Learning Core    │
-   │  ┌──────────────────────────┐  │
-   │  │  Phase 1: Experience     │  │
-   │  │  Replay (iCaRL/A-GEM)    │  │
-   │  └──────────────────────────┘  │
-   │  ┌──────────────────────────┐  │
-   │  │  Phase 2: PEFT/LoRA      │  │
-   │  │  (Low-Rank Adaptation)   │  │
-   │  └──────────────────────────┘  │
-   │  ┌──────────────────────────┐  │
-   │  │  Phase 3: Multi-Modal    │  │
-   │  │  (Vision + Text Fusion)  │  │
-   │  └──────────────────────────┘  │
-   │  ┌──────────────────────────┐  │
-   │  │  Phase 4: Hardware Opt   │  │
-   │  │  (Pruning + Compression) │  │
-   │  └──────────────────────────┘  │
-   └────────────────────────────────┘
-```
+## Why this project matters
 
-## Performance Metrics
+Most ML demos stop at a single training run on a fixed dataset. This project is more interesting because it explores a real engineering problem:
 
-| Metric | Value | Description |
-|--------|-------|-------------|
-| **Final Accuracy** | 89.24% | Average across 5 sequential tasks |
-| **Catastrophic Forgetting** | <2% | Minimal knowledge degradation |
-| **Training Time/Task** | ~48 seconds | Constant O(1) complexity |
-| **Buffer Memory** | 3.92 MB | 10 classes × 500 samples/class |
-| **LoRA Efficiency** | 88.2% | With only 4% trainable parameters |
-| **Multi-Modal Boost** | +10.25% | Vision + Text vs Vision-only |
-| **Compression Ratio** | Up to 4x | 11.2 MB → 5.6 MB (Mobile) |
-| **Inference Speedup** | 50% faster | 8ms → 4ms on GPU |
+- new classes arrive over time
+- retraining from scratch is expensive
+- old knowledge should not disappear
+- deployment targets may require smaller, faster models
 
-## Quick Start
+In short, the project is not just about getting accuracy on Fashion-MNIST. It is about managing the trade-offs between retention, efficiency, multimodal context, and deployability.
 
-### Prerequisites
+## What is implemented
 
-- Python 3.12+
-- NVIDIA GPU with CUDA 12.1 (optional, CPU supported)
-- 8GB RAM minimum (16GB recommended)
+### 1. Experience Replay
 
-### Installation
+- Fixed-capacity ring buffer for replayed samples
+- Balanced sampling across learned classes
+- FIFO replacement to keep memory bounded
+- Sequential task setup over Fashion-MNIST class groups
 
-1. **Clone the repository**
+### 2. PEFT / LoRA
+
+- LoRA adapters injected into convolutional and linear layers
+- Rank and alpha configurable from the UI
+- Parameter-efficient updates instead of full retraining
+
+### 3. Multimodal Learning
+
+- Vision encoder + text encoder pipeline
+- Fusion strategies available in the app: `concat`, `gated`, `cross_attention`
+- Text descriptions used to complement visual features
+
+### 4. Hardware Optimization
+
+- Structured pruning and quantization utilities
+- Presets for `mobile`, `gpu`, `edge`, and `cloud`
+- Benchmark-oriented workflow for size and latency trade-offs
+
+### 5. Demo Application
+
+- Streamlit interface for training and testing
+- Plotly charts for accuracy, forgetting, timing, and buffer distribution
+- Image upload with preprocessing-based inference flow
+
+## Reported results
+
+The figures below come from the two project reports dated 19/12/2025 and 26/12/2025. They should be treated as reported experiment results, not as claims re-verified by a full benchmark rerun in this review session.
+
+| Module | Reported outcome | Why it matters |
+|---|---|---|
+| Experience Replay | ~86% knowledge retention with a fixed 5,000-sample replay buffer | Shows the system can preserve prior knowledge while learning sequential tasks |
+| PEFT / LoRA | 88.2% final accuracy at rank 24 / alpha 48, with 85% optimizer-state memory reduction vs full fine-tuning | Demonstrates a practical efficiency trade-off |
+| Multimodal Fusion | 99.49% accuracy, +10.25 points over the vision-only baseline | Shows text descriptions can materially improve classification |
+| Hardware Optimization | Mobile preset reported at 5.6 MB, 45 ms CPU, 4 ms GPU | Highlights deployment-minded optimization rather than benchmark-only thinking |
+
+The Experience Replay report also documents:
+
+- a fixed total buffer size of 5,000 samples
+- class-balanced replay allocation as tasks grow
+- a bounded-memory design that avoids unscaled data retention
+
+## Validation on the current codebase
+
+I reviewed the repository and ran smoke checks on 2026-05-13. Current status:
+
+- `python -m compileall .` passes across `app.py`, `data`, `eval`, `models`, `optimizers`, `replay`, and `trainers`
+- core dependencies import successfully in the local environment: `torch`, `streamlit`, `plotly`, `cv2`, `Pillow`
+- `app.py` imports successfully
+- task-0 dataloader returns the expected tensor shapes from `get_task_loaders_true_continual(...)`
+- model forward pass works for `SimpleCNNMulticlass`
+- LoRA insertion runs successfully
+- hardware optimization preset initialization runs successfully
+
+Important honesty note:
+
+- this repository does not currently include an automated test suite
+- the checks above are smoke checks, not a full experiment reproduction
+- some report numbers reflect experiment configurations captured in the reports and may differ from what a fresh rerun on the current code revision produces
+
+## Recruiter takeaways
+
+This project is valuable because it demonstrates more than a standard model-training notebook:
+
+- end-to-end ML thinking: data pipeline, model design, evaluation, UI, and deployment trade-offs
+- practical continual learning: not just classification accuracy, but retention under sequential tasks
+- efficiency mindset: LoRA, quantization, pruning, and target-hardware presets
+- product sense: a working Streamlit layer makes the project easier to demo and explain
+- documentation quality: the project is backed by detailed technical reports rather than a code dump
+
+## Quick start
+
+### Requirements
+
+- Python 3.10+
+- CPU is enough for smoke checks; GPU is recommended for training
+
+### Install
+
 ```bash
-git clone https://github.com/yourusername/AI-Object-Dection-Continual-Learning.git
-cd AI-Object-Dection-Continual-Learning
-```
-
-2. **Run the application**
-
-**Windows (Recommended):** Double-click `run_app.bat`
-- Automatically checks Python installation
-- Installs all dependencies on first run
-- Opens browser automatically
-
-**Command Line:**
-```bash
-# Manual installation (optional)
 pip install -r requirements.txt
+```
 
-# Run the app
+### Run the app
+
+```bash
 streamlit run app.py
 ```
 
-The app will open in your browser at `http://localhost:8501`
+On Windows, you can also use:
 
-**Note:** On first run, dependency installation may take 5-10 minutes depending on your internet connection. Subsequent runs start immediately.
-
-## User Guide
-
-### Training Interface
-
-#### Phase 1: Experience Replay
-*Baseline continual learning with replay buffer*
-
-**Configuration:**
-- ✅ Enable Experience Replay
-- Buffer Size: 500 samples/class (default)
-- Epochs: 15 per task
-- Batch Size: 128
-
-**Expected Results:**
-- Accuracy: 89.24%
-- Training Time: ~4 minutes (5 tasks)
-- Forgetting: <2%
-
-#### Phase 2: PEFT/LoRA
-*Parameter-efficient fine-tuning*
-
-**Configuration:**
-- LoRA Rank: 24 (recommended)
-- LoRA Alpha: 48 (2× rank)
-- Experience Replay: ✅ Enabled
-
-**Expected Results:**
-- Accuracy: 88.2% (-1% vs full fine-tuning)
-- Trainable Params: 450K (4% of 11.2M)
-- Memory: 85% reduction in optimizer states
-
-#### Phase 3: Multi-Modal (Vision + Text)
-*Combined visual and textual learning*
-
-**Configuration:**
-- Fusion Strategy: `cross_attention` (best)
-- Text Mode: `rich` (detailed descriptions)
-- Experience Replay: ✅ Enabled
-
-**Expected Results:**
-- Accuracy: 99.49% (+10.25% vs vision-only)
-- Training Time: ~12 minutes
-- Parameters: 13.5M
-
-#### Phase 4: Hardware Optimization
-*Model compression for deployment*
-
-**Configuration:**
-- Target Hardware: `mobile` (50% sparsity)
-- Compression Strategy: `end` (compress after training)
-- Experience Replay: ✅ Enabled
-
-**Expected Results:**
-- Model Size: 5.6 MB (2x compression)
-- Accuracy: 89.7% (minimal loss)
-- Inference: 4ms GPU, 45ms CPU
-
-### Testing Interface
-
-#### Upload & Test
-1. **Upload Image**: Drag & drop or click to select (PNG/JPG)
-2. **Or Use Webcam**: Click "Capture from Webcam"
-3. **Preprocessing Pipeline** (4 steps):
-   - Original → Grayscale 28×28 → Contrast Enhancement → FMNIST Format
-4. **Adjust Settings**:
-   - Contrast: None/Light/Medium/Strong
-   - Background: Auto-detect/Force-invert/No-invert
-   - Filters: Blur/Sharpen
-5. **View Predictions**: Top-5 classes with confidence scores
-
-## Project Structure
-
-```
-AI-Object-Dection-Continual-Learning/
-├── app.py                          # Main Streamlit application
-├── run_app.bat                     # One-click launcher (Windows)
-├── requirements.txt                # Python dependencies
-├── REFERENCES.md                   # Academic papers & citations
-│
-├── data/                           # Dataset utilities
-│   ├── fashion_mnist_true_continual.py
-│   └── fashion_text.py             # Text descriptions for multi-modal
-│
-├── models/                         # Neural network architectures
-│   ├── simple_cnn_multiclass.py    # Base CNN model
-│   ├── peft_lora.py                # LoRA implementation
-│   ├── text_encoder.py             # Text encoder for multi-modal
-│   └── multimodal_fusion.py        # Vision-text fusion strategies
-│
-├── trainers/                       # Training strategies
-│   ├── continual_trainer.py        # Experience Replay trainer
-│   ├── peft_trainer.py             # PEFT/LoRA trainer
-│   ├── multimodal_trainer.py       # Multi-modal trainer
-│   └── hardware_trainer.py         # Hardware optimization trainer
-│
-├── replay/                         # Experience replay
-│   └── buffer.py                   # Ring buffer implementation
-│
-├── optimizers/                     # Model compression
-│   ├── pruning.py                  # Magnitude-based pruning
-│   ├── quantization.py             # INT8/FP16 quantization
-│   └── benchmark.py                # Performance benchmarking
-│
-└── eval/                           # Evaluation utilities
-    ├── metrics.py                  # Accuracy calculations
-    └── logger.py                   # Training logs
-```
-
-## Experimental Results
-
-### Phase Comparison
-
-| Phase | Accuracy | Training Time | Model Size | Key Benefit |
-|-------|----------|---------------|------------|-------------|
-| 1: Experience Replay | 89.24% | 4m 24s | 11.2 MB | Baseline with minimal forgetting |
-| 2: PEFT/LoRA | 88.2% | 4m 26s | 11.2 MB | 95% fewer trainable parameters |
-| 3: Multi-Modal | 99.49% | 12m 42s | 13.5 MB | +10.25% accuracy with text |
-| 4: Hardware Opt | 89.7% | 4m 24s | 5.6 MB | 2x compression for mobile |
-
-### Catastrophic Forgetting Analysis
-
-```
-Task 0 (T-shirt, Trouser):     99.85% → 99.85% (0% forgetting)
-Task 1 (Pullover, Dress):      98.35% → 96.60% (1.8% forgetting)
-Task 2 (Coat, Sandal):         99.30% → 91.80% (1.5% forgetting)
-Task 3 (Shirt, Sneaker):       96.75% → 85.42% (1.2% forgetting)
-Task 4 (Bag, Ankle boot):      99.05% → 89.24% (0% forgetting)
-
-Average Forgetting: <2%
-```
-
-## Technology Stack
-
-| Category | Technology |
-|----------|------------|
-| **Deep Learning** | PyTorch 2.5.1, CUDA 12.1 |
-| **Web Framework** | Streamlit 1.31.0 |
-| **Visualization** | Plotly, Matplotlib |
-| **Computer Vision** | TorchVision, OpenCV, Pillow |
-| **NLP** | Transformers (for text encoding) |
-| **Hardware** | NVIDIA RTX 3070 Ti (8GB VRAM) |
-
-## Academic References
-
-This project implements techniques from:
-
-- **Experience Replay**: iCaRL (Rebuffi et al., CVPR 2017), A-GEM (Chaudhry et al., ICLR 2019)
-- **LoRA**: Low-Rank Adaptation (Hu et al., 2021)
-- **Multi-Modal**: CLIP-inspired fusion (Radford et al., ICML 2021)
-- **Pruning**: Magnitude pruning (Han et al., NeurIPS 2015), PackNet (Mallya & Lazebnik, CVPR 2018)
-
-See [REFERENCES.md](REFERENCES.md) for complete citations.
-
-## Use Cases
-
-- **Fashion E-commerce**: Incremental learning of new clothing categories
-- **Edge Devices**: Compressed models for mobile/IoT deployment
-- **Research**: Benchmark for continual learning algorithms
-- **Education**: Learn continual learning concepts with interactive UI
-
-## Troubleshooting
-
-### Common Issues
-
-**1. CUDA Out of Memory**
-```
-Solution: Reduce batch size in sidebar (128 → 64 or 32)
-```
-
-**2. Slow Training on CPU**
-```
-Solution: Install CUDA-enabled PyTorch or reduce epochs (15 → 10)
-```
-
-**3. Import Errors**
 ```bash
-Solution: Reinstall dependencies
-pip install -r requirements.txt --upgrade
+run_app.bat
 ```
 
-**4. Webcam Not Working**
+The application opens at `http://localhost:8501`.
+
+## Demo features to try
+
+### Training side
+
+- toggle Experience Replay on/off
+- change LoRA rank and alpha
+- compare multimodal fusion strategies
+- switch hardware presets for compression experiments
+
+### Testing side
+
+- upload a clothing image
+- inspect the preprocessing flow
+- view top-k predictions and confidence scores
+
+## Repository layout
+
+```text
+AI-Object-Detection-Continual-Learning-main/
+|-- app.py
+|-- data/
+|   |-- fashion_mnist_true_continual.py
+|   `-- fashion_text.py
+|-- models/
+|   |-- simple_cnn_multiclass.py
+|   |-- peft_lora.py
+|   |-- text_encoder.py
+|   `-- multimodal_fusion.py
+|-- trainers/
+|   |-- continual_trainer.py
+|   |-- peft_trainer.py
+|   |-- multimodal_trainer.py
+|   `-- hardware_trainer.py
+|-- replay/
+|   `-- buffer.py
+|-- optimizers/
+|   |-- pruning.py
+|   |-- quantization.py
+|   |-- hardware_optimizer.py
+|   `-- benchmark.py
+`-- eval/
+    |-- metrics.py
+    `-- logger.py
 ```
-Solution: Grant browser camera permissions or use file upload
-```
 
-## Contributing
+## Known limitations
 
-Contributions are welcome! Areas for improvement:
+- current benchmark scope is Fashion-MNIST, which is much simpler than real-world production data
+- the repository does not yet ship with automated tests
+- full result reproduction still requires rerunning the training phases end to end
+- the project would be stronger with a larger continual-learning benchmark and cleaner experiment tracking
 
-- [ ] Add more datasets (CIFAR-100, ImageNet)
-- [ ] Implement additional CL methods (EWC, SI, PackNet)
-- [ ] Support for object detection tasks
-- [ ] Distributed training support
-- [ ] Docker containerization
-- [ ] API endpoint for inference
+## Suggested next upgrades
+
+- add automated tests for dataloaders, trainers, and metric utilities
+- log experiment runs to a reproducible tracker
+- add a CLI benchmark script for one-command result reproduction
+- extend beyond Fashion-MNIST to a harder continual-learning dataset
+- add model cards or exported checkpoints for demo-ready sharing
 
 ## License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-- **Fashion-MNIST Dataset**: [Zalando Research](https://github.com/zalandoresearch/fashion-mnist)
-- **PyTorch Team**: For the excellent deep learning framework
-- **Streamlit Team**: For the intuitive web framework
-- **Research Community**: For foundational continual learning papers
-
-## Contact
-
-For questions, issues, or collaboration:
-- GitHub Issues: [Create an issue](https://github.com/yourusername/AI-Object-Dection-Continual-Learning/issues)
-- Email: quyphuctran1@gmail.com
-
-## Star History
-
-If you find this project helpful, please consider giving it a star!
-
----
-
-*Last Updated: December 2025*
+Add a license file before publishing the repository publicly so usage terms are explicit for recruiters, collaborators, and future employers.
