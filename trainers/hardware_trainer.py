@@ -3,7 +3,6 @@ Hardware-Optimized Continual Learning Trainer
 Simplified - just adds compression on top of TrueContinualTrainer
 """
 
-import torch
 from trainers.continual_trainer import TrueContinualTrainer
 from optimizers import prune_model
 
@@ -17,7 +16,6 @@ class HardwareContinualTrainer(TrueContinualTrainer):
         self, 
         model, 
         device='cpu', 
-        buffer_size=500,
         compression_strategy='end',
         target_hardware='mobile',
         pruning_schedule=None

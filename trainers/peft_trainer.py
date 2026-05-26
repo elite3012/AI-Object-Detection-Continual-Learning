@@ -4,8 +4,7 @@ Combines TRUE Continual Learning with Parameter-Efficient Fine-Tuning (LoRA)
 """
 import torch
 from trainers.continual_trainer import TrueContinualTrainer
-from models.peft_lora import apply_lora_to_model, get_lora_parameters
-from models.simple_cnn_multiclass import SimpleCNNMulticlass
+from models.peft_lora import apply_lora_to_model
 
 class PEFTContinualTrainer(TrueContinualTrainer):
     """
@@ -23,7 +22,6 @@ class PEFTContinualTrainer(TrueContinualTrainer):
             use_replay: Use Experience Replay
             device: "cuda" or "cpu"
             num_tasks: Number of tasks
-            buffer_size: Samples per class in replay buffer (default: 500)
             lora_rank: LoRA rank (16-32, higher=better capacity for hard tasks)
             lora_alpha: LoRA scaling factor (32-64, 2x rank is optimal)
             lora_dropout: Dropout for LoRA layers (0.0 = no dropout)
@@ -44,11 +42,11 @@ class PEFTContinualTrainer(TrueContinualTrainer):
             dropout=lora_dropout
         )
 
-        # Ensure num_classes is provided
-        if num_classes is None:
-            raise ValueError("num_classes must be provided if the model does not define it.")
-
-        model = SimpleCNNMulticlass(num_classes=num_classes, unfreeze_backbone=unfreeze_backbone)
+        if unfreeze_backbone:
+            for name, param in model.named_parameters():
+                if "classifier" in name and "original_layer" in name:
+                    param.requires_grad = True
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         self.trainable_params = trainable_params
         self.total_params = total_params
@@ -61,7 +59,6 @@ class PEFTContinualTrainer(TrueContinualTrainer):
             use_replay=use_replay,
             device=device,
             num_tasks=num_tasks,
-            buffer_size=buffer_size
         )
     
     def train_all_tasks(self, epochs_per_task=10, batch_size=128, lr=0.002, data_root="./data"):
@@ -77,7 +74,10 @@ class PEFTContinualTrainer(TrueContinualTrainer):
         print(f"PEFT Continual Learning: {method_name}")
         print(f"Training ONLY on new classes per task")
         if self.use_replay and self.replay_buffer:
-            print(f"Replay Buffer: {self.replay_buffer.m_per_class} samples/class")
+            print(
+                f"Replay Buffer: {self.replay_buffer.samples_per_class} samples/class "
+                f"({self.replay_buffer.total_size} total)"
+            )
         print(f"LoRA Config: rank={self.lora_rank}, alpha={self.lora_alpha}")
         print(f"LoRA LR: {lr} (optimized for parameter-efficient training)")
         print(f"Trainable: {self.trainable_params:,} / {self.total_params:,} params ({self.trainable_params/self.total_params*100:.2f}%)")

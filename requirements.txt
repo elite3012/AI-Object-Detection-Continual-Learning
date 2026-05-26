@@ -7,19 +7,11 @@ streamlit==1.31.0
 plotly>=5.18.0
 
 # Image Processing
-opencv-python>=4.8.0
 Pillow>=10.0.0
 
 # Data Processing
 numpy>=1.24.0
 pandas>=2.0.0
 
-# Training Utilities
-tqdm>=4.65.0
-
-# Text Processing (for Multi-Modal)
-transformers>=4.30.0
-sentencepiece>=0.1.99
-
-# Tensor Operations
-einops>=0.6.1
+# Benchmarking
+psutil>=5.9.0

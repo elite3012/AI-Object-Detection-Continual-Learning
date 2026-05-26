@@ -25,10 +25,10 @@ def apply_quantization(model):
             dtype=torch.qint8
         )
         
-        print(f"  ✅ Quantization: FP32 → INT8 (4x theoretical compression)")
+        print("  Quantization: FP32 -> INT8 (4x theoretical compression)")
         return quantized_model
     except Exception as e:
-        print(f"  ⚠️  Quantization warning: {e}")
+        print(f"  Quantization warning: {e}")
         print("  Continuing with FP32 model...")
         return model
 
@@ -86,7 +86,7 @@ def prune_model(model, sparsity=0.3, method='magnitude', structured=True):
     print(f"  After pruning: {pruned_nonzero:,} params (non-zero)")
     print(f"  Actual sparsity: {metrics['actual_sparsity']*100:.1f}%")
     print(f"  Compression: {metrics['compression_ratio']:.2f}x")
-    print(f"  Size: {baseline_size:.2f} MB → {pruned_size:.2f} MB")
+    print(f"  Size: {baseline_size:.2f} MB -> {pruned_size:.2f} MB")
     print(f"  Size reduction: {metrics['size_reduction_percent']:.1f}%")
     print(f"{'='*60}\n")
     
@@ -216,7 +216,7 @@ def gradual_pruning(model, train_loader, initial_sparsity=0.0, final_sparsity=0.
         Gradually pruned model
     """
     print(f"\n{'='*60}")
-    print(f"Gradual Pruning: {initial_sparsity*100:.0f}% → {final_sparsity*100:.0f}% in {steps} steps")
+    print(f"Gradual Pruning: {initial_sparsity*100:.0f}% -> {final_sparsity*100:.0f}% in {steps} steps")
     print(f"{'='*60}\n")
     
     current_sparsity = initial_sparsity

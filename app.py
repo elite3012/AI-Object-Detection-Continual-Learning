@@ -5,27 +5,23 @@ Enhanced for Report Screenshots
 
 import streamlit as st
 import torch
-import torch.nn as nn
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
 from trainers.trainer import train_one_task
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import numpy as np
 import pandas as pd
-import cv2
 import os
 import sys
 import time
 from datetime import datetime
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # Add project root to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 from models.simple_cnn_multiclass import SimpleCNNMulticlass
-from models.peft_lora import apply_lora_to_model
 from models.text_encoder import SimpleTextEncoder, get_tokenizer, encode_texts
 from models.multimodal_fusion import MultiModalClassifier
 from data.fashion_text import get_text_description
@@ -33,7 +29,12 @@ from trainers.continual_trainer import TrueContinualTrainer
 from trainers.peft_trainer import PEFTContinualTrainer
 from trainers.multimodal_trainer import MultiModalContinualTrainer
 from trainers.hardware_trainer import HardwareContinualTrainer
-from data.fashion_mnist_true_continual import CLASS_NAMES
+from data.fashion_mnist_true_continual import CLASS_NAMES, TASKS
+
+
+def indices_for_classes(dataset, class_ids):
+    targets = np.asarray(dataset.targets)
+    return np.flatnonzero(np.isin(targets, class_ids)).tolist()
 
 # Page config
 st.set_page_config(page_title="Continual Learning System", layout="wide")
@@ -45,6 +46,12 @@ if 'device' not in st.session_state:
     st.session_state.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 if 'training_history' not in st.session_state:
     st.session_state.training_history = []
+if 'trained_phase' not in st.session_state:
+    st.session_state.trained_phase = None
+if 'trained_text_mode' not in st.session_state:
+    st.session_state.trained_text_mode = 'simple'
+if 'trained_num_tasks' not in st.session_state:
+    st.session_state.trained_num_tasks = 0
 
 # Title
 st.title("Continual Learning System")
@@ -89,23 +96,23 @@ else:
 if "Experience Replay" == phase:
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
     if use_replay:
-        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
+        st.sidebar.info("Buffer auto-scales: 500 samples/class x 10 classes = 5000 total")
 elif "PEFT" in phase:
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
     if use_replay:
-        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
+        st.sidebar.info("Buffer auto-scales: 500 samples/class x 10 classes = 5000 total")
     lora_rank = st.sidebar.slider("LoRA Rank", 8, 64, 24)
     lora_alpha = st.sidebar.slider("LoRA Alpha", 16, 128, 48)
 elif "Multi-Modal" in phase:
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
     if use_replay:
-        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
+        st.sidebar.info("Buffer auto-scales: 500 samples/class x 10 classes = 5000 total")
     fusion_type = st.sidebar.selectbox("Fusion Strategy", ["concat", "cross_attention", "gated"], index=0)
     text_mode = st.sidebar.selectbox("Text Mode", ["simple", "rich", "attributes"], index=0)
 else:  # Hardware Optimization
     use_replay = st.sidebar.checkbox("Use Experience Replay", value=True)
     if use_replay:
-        st.sidebar.info("Buffer auto-scales: 500 samples/class × 10 classes = 5000 total")
+        st.sidebar.info("Buffer auto-scales: 500 samples/class x 10 classes = 5000 total")
     compression_strategy = st.sidebar.selectbox("Compression Strategy", ["end", "gradual", "per_task"], index=1)
     target_hardware = st.sidebar.selectbox("Target Hardware", ["mobile", "gpu", "edge"], index=0)
 
@@ -353,18 +360,18 @@ with tab1:
             # Train using original trainer method with UI callbacks
             for task_id in range(num_tasks):
                 task_start_time = time.time()
-                task_classes = [task_id*2, task_id*2+1]
+                task_classes = TASKS[task_id]
                 
                 callback.on_task_start(task_id, task_classes)
                 
                 # Get task data
-                task_indices = [i for i, (_, label) in enumerate(train_dataset) if label in task_classes]
+                task_indices = indices_for_classes(train_dataset, task_classes)
                 task_subset = torch.utils.data.Subset(train_dataset, task_indices)
                 
                 # LoRA optimization: Use larger batch size for memory efficiency
                 effective_batch_size = batch_size
                 if "PEFT" in phase:
-                    # LoRA uses 4% params → can fit 2x larger batches without OOM
+                    # LoRA trains fewer parameters, so larger batches are usually safe.
                     effective_batch_size = min(batch_size, 512)  # Already optimized in UI, just ensure cap
                 
                 task_loader = DataLoader(task_subset, batch_size=effective_batch_size, shuffle=True)
@@ -388,6 +395,7 @@ with tab1:
                         test_loader=None,
                         device=trainer.device,
                         epochs=epochs_per_task,
+                        lr=lr,
                         replay_buffer=trainer.replay_buffer if (use_replay and hasattr(trainer, 'replay_buffer')) else None,
                         callback=callback,
                         task_id=task_id
@@ -403,8 +411,8 @@ with tab1:
                 
                 with torch.no_grad():
                     for test_task_id in range(task_id + 1):
-                        test_classes = [test_task_id*2, test_task_id*2+1]
-                        test_indices = [i for i, (_, label) in enumerate(test_dataset) if label in test_classes]
+                        test_classes = TASKS[test_task_id]
+                        test_indices = indices_for_classes(test_dataset, test_classes)
                         test_subset = torch.utils.data.Subset(test_dataset, test_indices)
                         test_loader = DataLoader(test_subset, batch_size=128, shuffle=False)
                         
@@ -443,7 +451,7 @@ with tab1:
                 
                 # Test on ALL tasks learned so far (0 to current)
                 for test_task_id in range(task_id + 1):
-                    test_classes = [test_task_id*2, test_task_id*2+1]
+                    test_classes = TASKS[test_task_id]
                     
                     # Get 30% validation data for this task
                     from data.fashion_mnist_true_continual import get_task_loaders_true_continual
@@ -667,7 +675,7 @@ with tab1:
                         
                         # Add section header row
                         all_validation_data.append({
-                            'After Training': f"═══ AFTER TASK {completed_task_id} COMPLETED ═══",
+                            'After Training': f"--- AFTER TASK {completed_task_id} COMPLETED ---",
                             'Tested On': '',
                             'Class': '',
                             'Correct': '',
@@ -691,7 +699,7 @@ with tab1:
                     
                     # Style the table
                     def highlight_headers(row):
-                        if '═══' in str(row['After Training']):
+                        if '--- AFTER TASK' in str(row['After Training']):
                             return ['background-color: #2c3e50; color: white; font-weight: bold'] * len(row)
                         return [''] * len(row)
                     
@@ -707,7 +715,7 @@ with tab1:
                         'Time (min)': f"{training_data['training_times'][i]/60:.2f}",
                         'Task Acc': f"{training_data['accuracies'][i][i]*100:.2f}%",
                         'Avg Acc': f"{np.mean(training_data['accuracies'][i])*100:.2f}%",
-                        'Forgetting': f"{training_data['forgetting'][i]:+.2f}%" if i > 0 else "—"
+                        'Forgetting': f"{training_data['forgetting'][i]:+.2f}%" if i > 0 else "N/A"
                     }
                     table_data.append(row)
                 
@@ -767,7 +775,7 @@ with tab1:
             # Apply hardware optimization compression for Phase 4
             if phase == "Hardware Optimization":
                 st.markdown("---")
-                st.subheader("🔧 Hardware Optimization - Compression")
+                st.subheader("Hardware Optimization - Compression")
                 
                 compress_status = st.empty()
                 compress_status.info("Applying model compression (quantization + pruning)...")
@@ -790,7 +798,7 @@ with tab1:
                     
                     compression_ratio = pre_compress_size_mb / post_compress_size_mb
                     
-                    compress_status.success(f"✅ Compression Complete: {pre_compress_size_mb:.2f} MB → {post_compress_size_mb:.2f} MB ({compression_ratio:.2f}x reduction)")
+                    compress_status.success(f"Compression complete: {pre_compress_size_mb:.2f} MB -> {post_compress_size_mb:.2f} MB ({compression_ratio:.2f}x reduction)")
                     
                     # Update checkpoint_size_mb for summary display
                     checkpoint_size_mb = post_compress_size_mb
@@ -813,6 +821,9 @@ with tab1:
             
             # Save trainer
             st.session_state.trainer = trainer
+            st.session_state.trained_phase = phase
+            st.session_state.trained_text_mode = text_mode if "Multi-Modal" in phase else "simple"
+            st.session_state.trained_num_tasks = num_tasks
             st.session_state.training_history.append({
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'phase': phase,
@@ -874,9 +885,9 @@ with tab1:
             final_model_size_bytes = os.path.getsize(final_checkpoint_path)
             final_model_size_mb = final_model_size_bytes / (1024 * 1024)
             
-            st.success(f"✅ {num_tasks} task checkpoints saved to: checkpoints/{phase_name}_task*.pt")
-            st.success(f"✅ Final checkpoint saved: {final_checkpoint_path}")
-            st.info(f"📊 Model Size: {final_model_size_mb:.2f} MB ({final_model_size_bytes:,} bytes)")
+            st.success(f"{num_tasks} task checkpoints saved to: checkpoints/{phase_name}_task*.pt")
+            st.success(f"Final checkpoint saved: {final_checkpoint_path}")
+            st.info(f"Model Size: {final_model_size_mb:.2f} MB ({final_model_size_bytes:,} bytes)")
             
             # Export report
             st.markdown("---")
@@ -938,6 +949,9 @@ with tab2:
         st.warning("No trained model available. Please train a model first.")
     else:
         st.success("Model loaded and ready for testing")
+        trained_phase = st.session_state.trained_phase or phase
+        trained_text_mode = st.session_state.trained_text_mode or "simple"
+        trained_num_tasks = st.session_state.trained_num_tasks or num_tasks
         
         # Test mode selection
         test_mode = st.radio("Test Mode", ["Upload Image", "Random from Dataset", "Batch Evaluation"], horizontal=True)
@@ -1084,7 +1098,7 @@ with tab2:
                     indices = np.random.choice(len(test_dataset), num_samples, replace=False)
                 else:
                     class_idx = CLASS_NAMES.index(filter_class)
-                    class_indices = [i for i, (_, label) in enumerate(test_dataset) if label == class_idx]
+                    class_indices = indices_for_classes(test_dataset, [class_idx])
                     indices = np.random.choice(class_indices, min(num_samples, len(class_indices)), replace=False)
                 
                 st.markdown("---")
@@ -1110,8 +1124,8 @@ with tab2:
                                 img_input = img.unsqueeze(0).to(st.session_state.device)
                                 
                                 # Handle Multi-Modal models
-                                if "Multi-Modal" in phase:
-                                    text = get_text_description(true_label, mode=text_mode if 'text_mode' in dir() else 'simple')
+                                if "Multi-Modal" in trained_phase:
+                                    text = get_text_description(true_label, mode=trained_text_mode)
                                     input_ids, attention_mask = encode_texts([text], device=st.session_state.device)
                                     outputs = st.session_state.trainer.model(img_input, input_ids, attention_mask)
                                 else:
@@ -1128,10 +1142,10 @@ with tab2:
                             pred_name = CLASS_NAMES[predicted_class]
                             
                             if predicted_class == true_label:
-                                st.success(f"✓ {pred_name}")
+                                st.success(f"Correct: {pred_name}")
                                 st.caption(f"{confidence_pct:.1f}%")
                             else:
-                                st.error(f"✗ {pred_name}")
+                                st.error(f"Predicted: {pred_name}")
                                 st.caption(f"True: {true_name}")
                                 st.caption(f"{confidence_pct:.1f}%")
         
@@ -1150,7 +1164,7 @@ with tab2:
             eval_option = st.radio("Evaluation Scope", ["All Tasks", "Specific Task", "Specific Class"], horizontal=True)
             
             if eval_option == "All Tasks":
-                num_tasks_trained = len(st.session_state.trainer.replay_buffer.data) if hasattr(st.session_state.trainer, 'replay_buffer') and st.session_state.trainer.replay_buffer else num_tasks
+                num_tasks_trained = trained_num_tasks
                 
                 if st.button("Evaluate All Tasks", type="primary", use_container_width=True):
                     with st.spinner("Evaluating..."):
@@ -1161,8 +1175,8 @@ with tab2:
                         
                         with torch.no_grad():
                             for task_id in range(num_tasks_trained):
-                                task_classes = [task_id*2, task_id*2+1]
-                                task_indices = [i for i, (_, label) in enumerate(test_dataset) if label in task_classes]
+                                task_classes = TASKS[task_id]
+                                task_indices = indices_for_classes(test_dataset, task_classes)
                                 task_subset = torch.utils.data.Subset(test_dataset, task_indices)
                                 task_loader = DataLoader(task_subset, batch_size=128, shuffle=False)
                                 
@@ -1174,8 +1188,8 @@ with tab2:
                                     labels = labels.to(st.session_state.device)
                                     
                                     # Handle Multi-Modal models
-                                    if "Multi-Modal" in phase:
-                                        texts = [get_text_description(int(label), mode=text_mode if 'text_mode' in dir() else 'simple') for label in labels]
+                                    if "Multi-Modal" in trained_phase:
+                                        texts = [get_text_description(int(label), mode=trained_text_mode) for label in labels]
                                         input_ids, attention_mask = encode_texts(texts, device=st.session_state.device)
                                         outputs = st.session_state.trainer.model(images, input_ids, attention_mask)
                                     else:
@@ -1234,12 +1248,12 @@ with tab2:
                         st.plotly_chart(fig, use_container_width=True)
             
             elif eval_option == "Specific Task":
-                task_id = st.selectbox("Select Task", range(num_tasks))
+                task_id = st.selectbox("Select Task", range(trained_num_tasks))
                 
                 if st.button("Evaluate Task", type="primary", use_container_width=True):
                     with st.spinner("Evaluating..."):
-                        task_classes = [task_id*2, task_id*2+1]
-                        task_indices = [i for i, (_, label) in enumerate(test_dataset) if label in task_classes]
+                        task_classes = TASKS[task_id]
+                        task_indices = indices_for_classes(test_dataset, task_classes)
                         task_subset = torch.utils.data.Subset(test_dataset, task_indices)
                         task_loader = DataLoader(task_subset, batch_size=128, shuffle=False)
                         
@@ -1253,8 +1267,8 @@ with tab2:
                                 labels = labels.to(st.session_state.device)
                                 
                                 # Handle Multi-Modal models
-                                if "Multi-Modal" in phase:
-                                    texts = [get_text_description(int(label), mode=text_mode if 'text_mode' in dir() else 'simple') for label in labels]
+                                if "Multi-Modal" in trained_phase:
+                                    texts = [get_text_description(int(label), mode=trained_text_mode) for label in labels]
                                     input_ids, attention_mask = encode_texts(texts, device=st.session_state.device)
                                     outputs = st.session_state.trainer.model(images, input_ids, attention_mask)
                                 else:
@@ -1281,7 +1295,7 @@ with tab2:
                 
                 if st.button("Evaluate Class", type="primary", use_container_width=True):
                     with st.spinner("Evaluating..."):
-                        class_indices = [i for i, (_, label) in enumerate(test_dataset) if label == class_idx]
+                        class_indices = indices_for_classes(test_dataset, [class_idx])
                         class_subset = torch.utils.data.Subset(test_dataset, class_indices)
                         class_loader = DataLoader(class_subset, batch_size=128, shuffle=False)
                         
@@ -1296,8 +1310,8 @@ with tab2:
                                 labels = labels.to(st.session_state.device)
                                 
                                 # Handle Multi-Modal models
-                                if "Multi-Modal" in phase:
-                                    texts = [get_text_description(int(label), mode=text_mode if 'text_mode' in dir() else 'simple') for label in labels]
+                                if "Multi-Modal" in trained_phase:
+                                    texts = [get_text_description(int(label), mode=trained_text_mode) for label in labels]
                                     input_ids, attention_mask = encode_texts(texts, device=st.session_state.device)
                                     outputs = st.session_state.trainer.model(images, input_ids, attention_mask)
                                 else:

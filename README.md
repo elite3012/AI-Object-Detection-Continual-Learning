@@ -1,202 +1,148 @@
-# Continual Learning System for Clothing Classification
+# Continual Learning System for Fashion-MNIST
 
-A recruiter-friendly showcase of a multi-phase continual learning project built with PyTorch and Streamlit, covering replay-based learning, PEFT/LoRA, multimodal fusion, and deployment-aware compression.
+A PyTorch and Streamlit project about one question I kept running into while studying applied AI:
+
+> What happens when a model is not allowed to learn everything at once?
+
+This repository turns Fashion-MNIST into a small continual-learning lab. The model sees classes in sequential tasks, keeps a bounded replay memory, experiments with LoRA-style parameter-efficient updates, combines image features with class text descriptions, and includes pruning/quantization utilities for deployment-aware thinking.
+
+The repository name still says "Object Dection" from the original course repo. The implemented benchmark here is clothing classification, not full object detection. I keep that scope explicit because a clean project should not overclaim.
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/pytorch-2.5.1-red.svg)](https://pytorch.org/)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.31.0-green.svg)](https://streamlit.io/)
-[![Status](https://img.shields.io/badge/status-smoke_checked-1f9d55.svg)](#validation-on-the-current-codebase)
-
-> Built as a 3-member AI course project at HCMIU. This README focuses on the implemented system, measured outcomes, and current codebase status.
-
-> Scope note: despite the repository name, the current implementation is a continual clothing classification benchmark on Fashion-MNIST rather than a full object detection pipeline.
+[![PyTorch](https://img.shields.io/badge/pytorch-2.x-red.svg)](https://pytorch.org/)
+[![Streamlit](https://img.shields.io/badge/ui-streamlit-green.svg)](https://streamlit.io/)
 
 ![Pipeline overview](assets/pipeline-overview.svg)
 ![Results snapshot](assets/results-snapshot.svg)
 
-## If you have 30 seconds
+## Why I Built This
 
-- This project addresses catastrophic forgetting when a model must learn new classes sequentially.
-- It combines Experience Replay, PEFT/LoRA, vision-text multimodal fusion, and hardware-aware compression in one end-to-end system.
-- It includes a usable Streamlit demo with training controls, Plotly dashboards, and image-based inference.
-- The current repository has been smoke-checked locally for imports, dataloading, model forward pass, and key module initialization.
+Most beginner ML projects train once, evaluate once, and stop. That is useful, but it hides a harder problem: real systems change. New labels arrive, data distributions move, and retraining from scratch is expensive.
 
-## Why this project matters
+I used this project to study the engineering around catastrophic forgetting:
 
-Most ML demos stop at a single training run on a fixed dataset. This project is more interesting because it explores a real engineering problem:
+- how to split one dataset into sequential tasks
+- how much old data a fixed replay buffer should keep
+- how LoRA-style adapters behave when only a small part of the model is trainable
+- whether text descriptions can help a vision model reason about class meaning
+- what compression does to a model that may need to run outside a notebook
 
-- new classes arrive over time
-- retraining from scratch is expensive
-- old knowledge should not disappear
-- deployment targets may require smaller, faster models
+The most important part of the project for me was not one final accuracy number. It was learning how to build an experiment loop that makes forgetting visible.
 
-In short, the project is not just about getting accuracy on Fashion-MNIST. It is about managing the trade-offs between retention, efficiency, multimodal context, and deployability.
+## What Is Implemented
 
-## What is implemented
+| Area | Implementation |
+|---|---|
+| True continual split | 5 tasks, 2 Fashion-MNIST classes per task |
+| Experience replay | Fixed-budget replay buffer with class-balanced sampling |
+| PEFT / LoRA | Low-rank adapters for convolutional and linear layers |
+| Multi-modal fusion | Vision encoder, lightweight character text encoder, concat/gated/cross-attention fusion |
+| Evaluation | Per-task accuracy, per-class accuracy, forgetting estimate, replay-buffer statistics |
+| Deployment thinking | Pruning, FP16 conversion, INT8/QAT utility path, hardware presets |
+| Demo layer | Streamlit UI for training, charts, checkpoints, upload inference, and batch evaluation |
 
-### 1. Experience Replay
+## Project Results
 
-- Fixed-capacity ring buffer for replayed samples
-- Balanced sampling across learned classes
-- FIFO replacement to keep memory bounded
-- Sequential task setup over Fashion-MNIST class groups
+These are the outcomes reported in my project report/demo runs. They are useful as project context, not as fresh benchmark claims from this cleanup commit.
 
-### 2. PEFT / LoRA
-
-- LoRA adapters injected into convolutional and linear layers
-- Rank and alpha configurable from the UI
-- Parameter-efficient updates instead of full retraining
-
-### 3. Multimodal Learning
-
-- Vision encoder + text encoder pipeline
-- Fusion strategies available in the app: `concat`, `gated`, `cross_attention`
-- Text descriptions used to complement visual features
-
-### 4. Hardware Optimization
-
-- Structured pruning and quantization utilities
-- Presets for `mobile`, `gpu`, `edge`, and `cloud`
-- Benchmark-oriented workflow for size and latency trade-offs
-
-### 5. Demo Application
-
-- Streamlit interface for training and testing
-- Plotly charts for accuracy, forgetting, timing, and buffer distribution
-- Image upload with preprocessing-based inference flow
-
-## Reported results
-
-The figures below come from the two project reports dated 19/12/2025 and 26/12/2025. They should be treated as reported experiment results, not as claims re-verified by a full benchmark rerun in this review session.
-
-| Module | Reported outcome | Why it matters |
+| Experiment | Reported observation | Why I cared |
 |---|---|---|
-| Experience Replay | ~86% knowledge retention with a fixed 5,000-sample replay buffer | Shows the system can preserve prior knowledge while learning sequential tasks |
-| PEFT / LoRA | 88.2% final accuracy at rank 24 / alpha 48, with 85% optimizer-state memory reduction vs full fine-tuning | Demonstrates a practical efficiency trade-off |
-| Multimodal Fusion | 99.49% accuracy, +10.25 points over the vision-only baseline | Shows text descriptions can materially improve classification |
-| Hardware Optimization | Mobile preset reported at 5.6 MB, 45 ms CPU, 4 ms GPU | Highlights deployment-minded optimization rather than benchmark-only thinking |
+| Experience Replay | Knowledge retention stayed much stronger with a fixed replay buffer than with plain finetuning | Shows catastrophic forgetting directly instead of only reporting final accuracy |
+| PEFT / LoRA | Rank/alpha tuning reduced trainable state while keeping the experiment usable | Connects continual learning with practical fine-tuning constraints |
+| Multi-modal fusion | Text descriptions improved the model in the reported setup | Tests whether semantic class hints can help a visual classifier |
+| Hardware optimization | Pruning/quantization workflow produced smaller checkpoints for demo deployment | Forces the project to think beyond notebook accuracy |
 
-The Experience Replay report also documents:
+## What Was Cleaned Up
 
-- a fixed total buffer size of 5,000 samples
-- class-balanced replay allocation as tasks grow
-- a bounded-memory design that avoids unscaled data retention
+The current codebase has been tightened for public review:
 
-## Validation on the current codebase
+- removed tracked `__pycache__` bytecode
+- removed tracked Fashion-MNIST raw files; the dataset now downloads through `torchvision`
+- removed local checkpoints from the repository surface
+- reduced `requirements.txt` to dependencies actually used by the code
+- fixed Fashion-MNIST test loading to use the real test split
+- made validation use deterministic, non-augmented transforms
+- fixed PEFT trainer so the LoRA-wrapped model is not accidentally discarded
+- fixed the Streamlit app so UI learning rate is passed into training
+- made Testing use the phase that produced the trained model, not the current sidebar selection
 
-I reviewed the repository and ran smoke checks on 2026-05-13. Current status:
-
-- `python -m compileall .` passes across `app.py`, `data`, `eval`, `models`, `optimizers`, `replay`, and `trainers`
-- core dependencies import successfully in the local environment: `torch`, `streamlit`, `plotly`, `cv2`, `Pillow`
-- `app.py` imports successfully
-- task-0 dataloader returns the expected tensor shapes from `get_task_loaders_true_continual(...)`
-- model forward pass works for `SimpleCNNMulticlass`
-- LoRA insertion runs successfully
-- hardware optimization preset initialization runs successfully
-
-Important honesty note:
-
-- this repository does not currently include an automated test suite
-- the checks above are smoke checks, not a full experiment reproduction
-- some report numbers reflect experiment configurations captured in the reports and may differ from what a fresh rerun on the current code revision produces
-
-## Recruiter takeaways
-
-This project is valuable because it demonstrates more than a standard model-training notebook:
-
-- end-to-end ML thinking: data pipeline, model design, evaluation, UI, and deployment trade-offs
-- practical continual learning: not just classification accuracy, but retention under sequential tasks
-- efficiency mindset: LoRA, quantization, pruning, and target-hardware presets
-- product sense: a working Streamlit layer makes the project easier to demo and explain
-- documentation quality: the project is backed by detailed technical reports rather than a code dump
-
-## Quick start
-
-### Requirements
-
-- Python 3.10+
-- CPU is enough for smoke checks; GPU is recommended for training
-
-### Install
+## Quick Start
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
-### Run the app
+Windows users can also run:
 
-```bash
-streamlit run app.py
-```
-
-On Windows, you can also use:
-
-```bash
+```bat
 run_app.bat
 ```
 
-The application opens at `http://localhost:8501`.
+The app opens at `http://localhost:8501`.
 
-## Demo features to try
+Fashion-MNIST is downloaded automatically into `data/FashionMNIST/` on first run. Checkpoints are written to `checkpoints/`. Both are ignored by Git because they are generated artifacts.
 
-### Training side
-
-- toggle Experience Replay on/off
-- change LoRA rank and alpha
-- compare multimodal fusion strategies
-- switch hardware presets for compression experiments
-
-### Testing side
-
-- upload a clothing image
-- inspect the preprocessing flow
-- view top-k predictions and confidence scores
-
-## Repository layout
+## Repository Map
 
 ```text
-AI-Object-Detection-Continual-Learning-main/
-|-- app.py
-|-- data/
-|   |-- fashion_mnist_true_continual.py
-|   `-- fashion_text.py
-|-- models/
-|   |-- simple_cnn_multiclass.py
-|   |-- peft_lora.py
-|   |-- text_encoder.py
-|   `-- multimodal_fusion.py
-|-- trainers/
-|   |-- continual_trainer.py
-|   |-- peft_trainer.py
-|   |-- multimodal_trainer.py
-|   `-- hardware_trainer.py
-|-- replay/
-|   `-- buffer.py
-|-- optimizers/
-|   |-- pruning.py
-|   |-- quantization.py
-|   |-- hardware_optimizer.py
-|   `-- benchmark.py
-`-- eval/
-    |-- metrics.py
-    `-- logger.py
+app.py                         Streamlit demo and experiment dashboard
+data/
+  fashion_mnist_true_continual.py
+  fashion_text.py              Task splits and class text descriptions
+models/
+  simple_cnn_multiclass.py     CNN image classifier
+  peft_lora.py                 LoRA adapter implementation
+  text_encoder.py              Lightweight character-level text encoder
+  multimodal_fusion.py         Fusion classifiers
+trainers/
+  trainer.py                   Single-task training loop
+  continual_trainer.py         Replay-based continual trainer
+  peft_trainer.py              LoRA continual trainer
+  multimodal_trainer.py        Vision-text continual trainer
+  hardware_trainer.py          Compression wrapper
+replay/
+  buffer.py                    Fixed-budget replay buffer
+optimizers/
+  pruning.py
+  quantization.py
+  hardware_optimizer.py
+  benchmark.py                 Compression and profiling utilities
+eval/
+  metrics.py
+  logger.py
+assets/
+  pipeline-overview.svg
+  results-snapshot.svg
 ```
 
-## Known limitations
+## Validation
 
-- current benchmark scope is Fashion-MNIST, which is much simpler than real-world production data
-- the repository does not yet ship with automated tests
-- full result reproduction still requires rerunning the training phases end to end
-- the project would be stronger with a larger continual-learning benchmark and cleaner experiment tracking
+Useful smoke checks:
 
-## Suggested next upgrades
+```bash
+python -B -c "import pathlib; [compile(p.read_text(encoding='utf-8'), str(p), 'exec') for p in pathlib.Path('.').rglob('*.py') if '.git' not in p.parts]"
+python -B -c "import torch; from models.simple_cnn_multiclass import SimpleCNNMulticlass; from models.peft_lora import apply_lora_to_model; from models.text_encoder import SimpleTextEncoder, get_tokenizer, encode_texts; from models.multimodal_fusion import MultiModalClassifier; model=SimpleCNNMulticlass(10); assert model(torch.randn(2,1,28,28)).shape==(2,10); _, trainable, total=apply_lora_to_model(SimpleCNNMulticlass(10), rank=4, alpha=8); assert trainable < total; text_encoder=SimpleTextEncoder(vocab_size=get_tokenizer().vocab_size); input_ids, mask=encode_texts(['a casual shirt','ankle boot']); multi=MultiModalClassifier(SimpleCNNMulticlass(10), text_encoder); assert multi(torch.randn(2,1,28,28), input_ids, mask).shape==(2,10)"
+```
 
-- add automated tests for dataloaders, trainers, and metric utilities
-- log experiment runs to a reproducible tracker
-- add a CLI benchmark script for one-command result reproduction
-- extend beyond Fashion-MNIST to a harder continual-learning dataset
-- add model cards or exported checkpoints for demo-ready sharing
+## Current Limitations
+
+- Fashion-MNIST is intentionally small; it is good for studying mechanics, not for claiming production robustness.
+- There is no full automated test suite yet.
+- Reported experiment numbers should be reproduced with a fresh run before being used in a formal benchmark.
+- The multi-modal setup uses class descriptions as controlled semantic hints; a harder version should use noisier real-world text.
+- Compression utilities are research/demo utilities, not a polished deployment pipeline.
+
+## Next Things I Would Improve
+
+- add a one-command benchmark script that records config, seed, metrics, and checkpoint paths
+- add pytest coverage for data splits, replay sampling, LoRA wrapping, and multimodal forward passes
+- export experiment logs to CSV/JSON so reports can be regenerated without manual screenshots
+- try a harder continual-learning benchmark beyond Fashion-MNIST
+- add a small model card for the best checkpoint generated by a reproducible run
 
 ## License
 
-Add a license file before publishing the repository publicly so usage terms are explicit for recruiters, collaborators, and future employers.
+No license is included yet. Add one before reusing or publishing this as a shared package.

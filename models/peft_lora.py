@@ -101,9 +101,6 @@ def apply_lora_to_model(model, rank=8, alpha=16, target_modules=None, dropout=0.
         trainable_params: Number of trainable parameters
         total_params: Total number of parameters
     """
-    # Count original parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    
     # Apply LoRA to target layers
     def apply_lora_recursive(module, prefix=''):
         for name, child in module.named_children():
@@ -127,7 +124,7 @@ def apply_lora_to_model(model, rank=8, alpha=16, target_modules=None, dropout=0.
     
     apply_lora_recursive(model)
     
-    # Count trainable parameters (only LoRA)
+    total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     
     print(f"\n[LoRA] Trainable params: {trainable_params:,} / {total_params:,} ({trainable_params/total_params*100:.2f}%)")
@@ -162,9 +159,14 @@ def merge_lora_weights(model):
                 
                 elif isinstance(original, nn.Conv2d):
                     delta = child.scaling * (child.lora_A @ child.lora_B).T
-                    # Expand delta to match conv weight shape
-                    delta = delta.unsqueeze(-1).unsqueeze(-1)
-                    original.weight.data += delta
+                    merged_delta = torch.zeros_like(original.weight.data)
+                    center_h = original.weight.shape[2] // 2
+                    center_w = original.weight.shape[3] // 2
+                    merged_delta[:, :, center_h, center_w] = delta.to(
+                        device=merged_delta.device,
+                        dtype=merged_delta.dtype,
+                    )
+                    original.weight.data += merged_delta
                 
                 # Replace LoRA layer with original (now merged)
                 original.requires_grad_(True)

@@ -71,7 +71,7 @@ def benchmark_model(model, test_loader, device='cpu', num_warmup=10, num_runs=10
     std_latency = np.std(latencies)
     throughput = (batch_size * 1000) / avg_latency  # images/sec
     
-    print(f"  Avg latency: {avg_latency:.2f} ± {std_latency:.2f} ms")
+    print(f"  Avg latency: {avg_latency:.2f} +/- {std_latency:.2f} ms")
     print(f"  Throughput: {throughput:.1f} images/sec")
     print(f"  Batch size: {batch_size}\n")
     

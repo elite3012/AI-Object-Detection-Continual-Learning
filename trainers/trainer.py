@@ -29,10 +29,14 @@ def train_one_task(model, train_loader,
     
     # Use AdamW for better convergence with replay buffers
     # Note: lr parameter is now used (0.0005 for full fine-tuning, 0.001-0.003 for LoRA)
-    opt = optim.AdamW(params = model.parameters(),
-                      lr = lr,
-                      weight_decay = 0.01,
-                      betas = (0.9, 0.999))
+    trainable_params = [param for param in model.parameters() if param.requires_grad]
+    if not trainable_params:
+        raise ValueError("No trainable parameters found for this model.")
+
+    opt = optim.AdamW(params=trainable_params,
+                      lr=lr,
+                      weight_decay=0.01,
+                      betas=(0.9, 0.999))
     scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max = epochs, eta_min = lr * 0.1)
     loss_fn = nn.CrossEntropyLoss()
 
