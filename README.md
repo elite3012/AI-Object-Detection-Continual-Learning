@@ -93,6 +93,30 @@ Fashion-MNIST is downloaded automatically through `torchvision` on first run. Ge
 - `checkpoints/`
 - `__pycache__/`
 
+## Docker
+
+Build and run the Streamlit app with Docker:
+
+```bash
+docker build -t continual-learning-system .
+docker run --rm -p 8501:8501 continual-learning-system
+```
+
+Run with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The Compose setup mounts generated artifacts outside the image:
+
+- `./data/FashionMNIST` is mounted to `/app/data/FashionMNIST`
+- `./checkpoints` is mounted to `/app/checkpoints`
+
+This keeps the image focused on source code and dependencies while allowing dataset downloads and checkpoints to persist between runs.
+
+For cloud platforms that support Dockerfile-based deployment, expose port `8501` and route traffic to the Streamlit process inside the container.
+
 ## Running Experiments
 
 The sidebar controls the experiment strategy and training configuration.
