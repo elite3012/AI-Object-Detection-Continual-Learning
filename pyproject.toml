@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+testpaths = ["eval"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+    "app.py",
+    "data",
+    "optimizers",
+    "replay",
+    "trainers",
+    "eval/logger.py",
+    "eval/metrics.py",
+    "models/multimodal_fusion.py",
+    "models/peft_lora.py",
+    "models/simple_cnn_multiclass.py",
+    "models/text_encoder.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

@@ -10,10 +10,9 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
-checkpoints/
+artifacts/
+benchmark-results.json
 *.pt
 *.pth
-
-data/FashionMNIST/
 
 .streamlit/secrets.toml

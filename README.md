@@ -1,192 +1,160 @@
-# Continual Learning System for Fashion-MNIST
+# Adaptive Vision Service
 
-A PyTorch and Streamlit project for experimenting with continual image classification on Fashion-MNIST. The system trains on sequential class groups, evaluates forgetting across previously learned tasks, and includes optional replay, LoRA-style adapters, multimodal fusion, and model compression utilities.
+An image classification service that can learn a new visual class from a small set of reference images. It uses a frozen CLIP image encoder and stores one incremental prototype per class, so adding a class does not require retraining or redeploying the backbone.
 
-> Scope: this repository implements a Fashion-MNIST continual classification benchmark. It is not an object detection pipeline, despite the historical repository name.
+The repository includes a FastAPI service, a Streamlit operations dashboard, persistent prototype memory, feedback updates, rolling unknown-rate metrics, a folder-based evaluation command, automated tests, and a two-service Docker deployment.
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/pytorch-2.x-red.svg)](https://pytorch.org/)
-[![Streamlit](https://img.shields.io/badge/ui-streamlit-green.svg)](https://streamlit.io/)
+## How It Works
 
-![Pipeline overview](assets/pipeline-overview.svg)
-![Results snapshot](assets/results-snapshot.svg)
+1. Reference images are converted to normalized CLIP embeddings.
+2. The service maintains the sum and count of embeddings for each class.
+3. A query is compared with normalized class prototypes using cosine similarity.
+4. Predictions below the configured threshold are returned as unknown.
+5. Corrected samples can be submitted as feedback and update the prototype immediately.
 
-## Overview
+This design targets cases where labels evolve faster than a conventional training and deployment cycle, such as product catalogs, defect categories, internal assets, and field inspection workflows.
 
-The project studies catastrophic forgetting in a controlled setting. Fashion-MNIST is split into five sequential tasks, each containing two classes. A model is trained task by task, then evaluated on both the current task and previously seen tasks.
-
-The codebase is organized around four experiment tracks:
-
-- standard continual finetuning with optional experience replay
-- parameter-efficient continual learning with LoRA-style adapters
-- vision-text multimodal classification using class descriptions
-- hardware-aware compression with pruning and quantization utilities
-
-The Streamlit app provides a UI for running experiments, visualizing task accuracy, inspecting replay-buffer behavior, saving checkpoints, and testing trained models interactively.
-
-## Features
-
-| Component | Description |
-|---|---|
-| Task split | 5 sequential Fashion-MNIST tasks, 2 classes per task |
-| Replay buffer | Fixed total memory budget with class-balanced sampling |
-| LoRA adapters | Low-rank adaptation for convolutional and linear layers |
-| Multimodal model | CNN image encoder, lightweight text encoder, and fusion layers |
-| Fusion strategies | Concatenation, gated fusion, and cross-attention |
-| Metrics | Task accuracy, per-class accuracy, forgetting estimate, buffer statistics |
-| Compression | Pruning, FP16 conversion, INT8/QAT utilities, target hardware presets |
-| Demo UI | Training controls, Plotly charts, image upload, random sample testing, batch evaluation |
-
-## Architecture
-
-```text
-app.py                         Streamlit experiment dashboard
-data/
-  fashion_mnist_true_continual.py
-  fashion_text.py              Task splits and class text descriptions
-models/
-  simple_cnn_multiclass.py     CNN image classifier
-  peft_lora.py                 LoRA adapter implementation
-  text_encoder.py              Character-level text encoder
-  multimodal_fusion.py         Fusion modules and multimodal classifier
-trainers/
-  trainer.py                   Single-task training loop
-  continual_trainer.py         Replay-based continual trainer
-  peft_trainer.py              LoRA continual trainer
-  multimodal_trainer.py        Vision-text continual trainer
-  hardware_trainer.py          Compression wrapper
-replay/
-  buffer.py                    Fixed-budget replay buffer
-optimizers/
-  pruning.py
-  quantization.py
-  hardware_optimizer.py
-  benchmark.py                 Compression and profiling utilities
-eval/
-  metrics.py
-  logger.py
-assets/
-  pipeline-overview.svg
-  results-snapshot.svg
+```mermaid
+flowchart LR
+    A[Reference images] --> B[CLIP image encoder]
+    B --> C[Prototype memory]
+    D[Query image] --> B
+    B --> E[Cosine similarity]
+    C --> E
+    E --> F[Class or unknown]
+    F --> G[Human feedback]
+    G --> C
 ```
 
-## Quick Start
-
-```bash
-python -m venv .venv
-.\.venv\Scripts\activate
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
-```
-
-On Windows, the helper script can be used instead:
-
-```bat
-run_app.bat
-```
-
-The app opens at `http://localhost:8501`.
-
-Fashion-MNIST is downloaded automatically through `torchvision` on first run. Generated dataset files and checkpoints are ignored by Git:
-
-- `data/FashionMNIST/`
-- `checkpoints/`
-- `__pycache__/`
-
-## Docker
-
-Build and run the Streamlit app with Docker:
-
-```bash
-docker build -t continual-learning-system .
-docker run --rm -p 8501:8501 continual-learning-system
-```
-
-Run with Docker Compose:
+## Run With Docker
 
 ```bash
 docker compose up --build
 ```
 
-The Compose setup mounts generated artifacts outside the image:
+- Dashboard: `http://localhost:8501`
+- API documentation: `http://localhost:8000/docs`
+- Health endpoint: `http://localhost:8000/health`
 
-- `./data/FashionMNIST` is mounted to `/app/data/FashionMNIST`
-- `./checkpoints` is mounted to `/app/checkpoints`
+The first inference request downloads the configured CLIP checkpoint. Docker Compose keeps the model cache and prototype state in named volumes, so subsequent starts reuse them.
 
-This keeps the image focused on source code and dependencies while allowing dataset downloads and checkpoints to persist between runs.
+## API Workflow
 
-For cloud platforms that support Dockerfile-based deployment, expose port `8501` and route traffic to the Streamlit process inside the container.
-
-## Running Experiments
-
-The sidebar controls the experiment strategy and training configuration.
-
-Available strategies:
-
-- `Experience Replay`: trains a CNN on sequential tasks with optional replay
-- `PEFT/LoRA`: injects low-rank adapters and trains only the trainable adapter path by default
-- `Multi-Modal (Vision + Text)`: combines image features with class-level text descriptions
-- `Hardware Optimization`: applies compression after continual training
-
-The training tab tracks:
-
-- overall progress
-- task accuracy over time
-- average forgetting
-- replay-buffer utilization
-- per-class validation results
-- checkpoint size
-
-The testing tab supports:
-
-- uploaded image classification
-- random samples from Fashion-MNIST
-- task-level and class-level batch evaluation
-
-## Validation
-
-Smoke-check syntax without creating bytecode:
+Add reference images to a class:
 
 ```bash
-python -B -c "import pathlib; [compile(p.read_text(encoding='utf-8'), str(p), 'exec') for p in pathlib.Path('.').rglob('*.py') if '.git' not in p.parts]"
+curl -X POST "http://localhost:8000/v1/classes/damaged-connector/examples" \
+  -F "files=@samples/damaged-connector/01.jpg" \
+  -F "files=@samples/damaged-connector/02.jpg"
 ```
 
-Smoke-check core model paths:
+Classify an image:
 
 ```bash
-python -B -c "import torch; from models.simple_cnn_multiclass import SimpleCNNMulticlass; from models.peft_lora import apply_lora_to_model; from models.text_encoder import SimpleTextEncoder, get_tokenizer, encode_texts; from models.multimodal_fusion import MultiModalClassifier; model=SimpleCNNMulticlass(10); assert model(torch.randn(2,1,28,28)).shape==(2,10); _, trainable, total=apply_lora_to_model(SimpleCNNMulticlass(10), rank=4, alpha=8); assert trainable < total; text_encoder=SimpleTextEncoder(vocab_size=get_tokenizer().vocab_size); input_ids, mask=encode_texts(['a casual shirt','ankle boot']); multi=MultiModalClassifier(SimpleCNNMulticlass(10), text_encoder); assert multi(torch.randn(2,1,28,28), input_ids, mask).shape==(2,10)"
+curl -X POST "http://localhost:8000/v1/predict?top_k=3" \
+  -F "file=@samples/query.jpg"
 ```
 
-## Notes on Reported Results
+Submit a corrected label:
 
-The charts and project report results were produced from local experiment runs. They should be treated as experiment observations rather than fixed benchmark guarantees. Hardware, random seeds, training length, and the selected strategy can change the final metrics.
+```bash
+curl -X POST "http://localhost:8000/v1/feedback/damaged-connector" \
+  -F "file=@samples/query.jpg"
+```
 
-For formal comparison, run the experiments from a clean environment and record:
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | Process and model state |
+| `GET` | `/v1/classes` | Class memory inventory |
+| `POST` | `/v1/classes/{label}/examples` | Add one or more reference images |
+| `DELETE` | `/v1/classes/{label}` | Remove a class prototype |
+| `POST` | `/v1/predict` | Return ranked matches or unknown |
+| `POST` | `/v1/feedback/{label}` | Apply a corrected sample |
+| `GET` | `/v1/metrics` | Rolling similarity and unknown-rate metrics |
 
-- random seed
-- strategy and hyperparameters
-- number of tasks
-- epochs per task
-- replay configuration
-- final checkpoint
-- task accuracy matrix
+## Local Development
 
-## Limitations
+Python 3.10 or newer is required.
 
-- Fashion-MNIST is a small benchmark and does not represent production-scale visual data.
-- The repository currently has smoke checks, not a complete automated test suite.
-- Multimodal training uses class descriptions as controlled semantic hints.
-- Compression utilities are designed for experimentation and need more evaluation before deployment.
-- Full reproducibility would benefit from a dedicated CLI benchmark runner and structured experiment logs.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python -m uvicorn api:app --reload --port 8000
+```
 
-## Roadmap
+In a second terminal:
 
-- Add pytest coverage for task splits, replay sampling, LoRA wrapping, and multimodal forward passes.
-- Add a reproducible benchmark CLI that exports config, metrics, and checkpoints.
-- Store experiment logs as CSV/JSON for easier report generation.
-- Evaluate on a harder continual-learning benchmark.
-- Add a model card for any published checkpoint.
+```powershell
+$env:ADAPTIVE_VISION_API_URL = "http://localhost:8000"
+python -m streamlit run dashboard.py
+```
+
+Runtime settings can be copied from `.env.example` or supplied by the deployment environment.
+
+| Variable | Default | Description |
+|---|---|---|
+| `VISION_MODEL_NAME` | `openai/clip-vit-base-patch32` | Hugging Face checkpoint |
+| `VISION_DEVICE` | `auto` | `auto`, `cpu`, or `cuda` |
+| `VISION_STATE_PATH` | `artifacts/prototypes.json` | Persistent prototype snapshot |
+| `VISION_CONFIDENCE_THRESHOLD` | `0.55` | Minimum top similarity for a known result |
+| `VISION_DRIFT_WINDOW_SIZE` | `500` | Number of predictions retained in memory |
+| `VISION_MAX_UPLOAD_MB` | `10` | Per-file upload limit |
+
+## Evaluation
+
+The evaluator expects one directory per class. It selects a deterministic support set, teaches every class, evaluates the remaining images, and writes configuration plus aggregate and per-class results to JSON.
+
+```text
+dataset/
+  class-a/
+    001.jpg
+    002.jpg
+  class-b/
+    001.jpg
+    002.jpg
+```
+
+```bash
+python -m eval.benchmark dataset --support-per-class 5 --output benchmark-results.json
+```
+
+Do not treat the default `0.55` threshold as universal. Calibrate it on validation data from the target domain and inspect both accuracy and unknown rate.
+
+## Tests
+
+```bash
+python -m pytest
+python -m ruff check .
+```
+
+The tests use a deterministic color embedder instead of downloading CLIP. They cover incremental prototype updates, persistence, dimension validation, known and unknown predictions, feedback, and the multipart API workflow.
+
+## Project Layout
+
+```text
+api.py                         FastAPI application and HTTP validation
+dashboard.py                   Streamlit client for API operations
+models/
+  adaptive_service.py          Application workflow and decision threshold
+  embeddings.py                Lazy CLIP adapter
+  prototype_memory.py          Incremental prototypes and JSON persistence
+  drift.py                     Rolling operational metrics
+  config.py                    Environment configuration
+eval/
+  benchmark.py                 Folder-based few-shot evaluation
+  test_*.py                    Unit and API tests
+Dockerfile                     Shared API/dashboard image
+docker-compose.yml             Two-service local deployment
+```
+
+## Boundaries
+
+- Prototype JSON is appropriate for a single API replica. Multiple writers require a transactional store or vector database.
+- Drift metrics are process-local and reset on restart. Export them to an observability backend for production use.
+- Prototype classification works best when class appearance is coherent. Fine-grained domains may require a trained metric head or supervised fine-tuning.
+- The service does not retain uploaded source images. Only aggregate embedding sums and counts are persisted.
 
 ## License
 
-No license is included yet. Add one before distributing or reusing the project as a package.
+No license is currently included. Add one before redistributing the project or its code.
