@@ -1,7 +1,7 @@
 # IP102 Pest Recognition System
 
 > Design report for review  
-> Status: **Draft - no implementation has started**  
+> Status: **Implementation in progress - Sections 1, 2, and 3 completed**
 > Purpose: agree on the ML problem, system boundaries, workflow, deployment, and acceptance gates before changing the codebase.
 
 ## 1. Executive summary
@@ -895,7 +895,7 @@ The root `/data` directory is ignored by Git and Docker. Source folders named `d
 
 | Check | Result |
 |---|---|
-| Section 2 tests | 6 passed |
+| Section 2 tests | 7 passed |
 | Ruff on `src/pestscope`, `scripts`, and `tests/data` | Passed |
 | Fixture manifest records | 9 valid records |
 | Fixture artifact set | Manifest CSV, audit JSON, EDA Markdown, shortlist CSV |
@@ -996,3 +996,121 @@ Section 2 becomes fully reviewable when the real-data artifacts answer these que
 6. Is at least one licensed external validation source available per selected class?
 
 All six questions are now answered. Section 2 is ready for owner approval before baseline model or PestNet-S training begins.
+
+## 22. Section 3 modeling foundation
+
+> Implementation completed on 2026-06-24.
+> Scope: custom CNN, manifest-backed training loop, evaluation metrics, and model-bundle export.
+> Result: **passed fixture tests and real IP102 smoke training**.
+
+### 22.1 Implemented scope
+
+Section 3 adds the supervised-learning core without replacing the public API yet:
+
+- `PestNet-S`, a compact residual CNN trained from scratch;
+- `SimpleCNN`, a smaller baseline kept for later controlled comparison;
+- image preprocessing and light field-oriented augmentation without `torchvision`;
+- manifest-backed `Dataset` loading only the reviewed IP102 class ids;
+- class-balanced cross-entropy through optional weighted loss;
+- top-1, top-3, macro-F1, balanced accuracy, confusion matrix, and per-class metrics;
+- run metadata containing manifest hash, class map, preprocessing, model size, training config, and Git state;
+- reloadable model bundle containing `model.pt`, `metadata.json`, and `metrics.json`;
+- direct script execution through `python scripts/...` without needing a special `PYTHONPATH`;
+- a tiny generated-image training test that exports and reloads a real bundle.
+
+### 22.2 Added files
+
+| Path | Responsibility |
+|---|---|
+| `configs/train/pestnet_s.yaml` | Default training configuration for the reviewed 12-class IP102 subset |
+| `src/pestscope/modeling/pestnet.py` | `PestNet-S`, `SimpleCNN`, model factory, and parameter counting |
+| `src/pestscope/training/config.py` | Typed YAML training configuration |
+| `src/pestscope/training/dataset.py` | Manifest filtering, selected-class indexing, and PyTorch dataset |
+| `src/pestscope/training/transforms.py` | PIL-based resize, crop, augmentation, and normalization |
+| `src/pestscope/training/metrics.py` | Classification metrics and confusion matrix |
+| `src/pestscope/training/bundle.py` | Model-bundle write/load helpers with artifact hashes |
+| `src/pestscope/training/runner.py` | End-to-end train, validation, history, and bundle orchestration |
+| `scripts/train_pestnet.py` | Owner-facing training CLI |
+| `tests/modeling/test_pestnet.py` | Architecture shape and size checks |
+| `tests/training/test_training_smoke.py` | Mini train/export/reload smoke test |
+
+### 22.3 Model implementation
+
+The main model is intentionally small enough for CPU experiments but structured enough to discuss real design choices:
+
+```mermaid
+flowchart LR
+    image[/RGB image/]
+    stem["Conv-BN-SiLU stem"]
+    s1["Residual stage 32"]
+    s2["Residual stage 64"]
+    s3["Residual stage 128"]
+    s4["Residual stage 256 + channel attention"]
+    pool["Global average pool"]
+    drop["Dropout"]
+    logits["Class logits"]
+
+    image --> stem --> s1 --> s2 --> s3 --> s4 --> pool --> drop --> logits
+```
+
+The default width-32 `PestNet-S` has **2,812,908 trainable parameters** for the current 12-class subset. The classifier uses global average pooling instead of a large dense stack so most capacity remains in convolutional feature extraction.
+
+### 22.4 Verification evidence
+
+| Check | Result |
+|---|---|
+| `python -m ruff check src\pestscope scripts tests --no-cache` | Passed |
+| `python -m ruff format --check src\pestscope scripts tests` | Passed |
+| `python -m pytest -q` | 10 passed |
+| Real IP102 smoke train | Passed |
+
+The real smoke command was:
+
+```powershell
+python scripts\train_pestnet.py `
+  --max-epochs 1 `
+  --limit-train-per-class 2 `
+  --limit-val-per-class 1 `
+  --device cpu `
+  --bundle-dir artifacts\models\pestnet_s_smoke
+```
+
+Smoke output produced run `20260624T101440Z`, loaded all 12 reviewed classes from the real manifest, trained on 24 real IP102 images, validated on 12 real IP102 images, and exported a reloadable bundle with SHA-256 `07575ff498c096f2836b7ba21d0d0ef14a52caf37900edd3ae310a2fa183995d`.
+
+The smoke metrics are not reported as model quality. With only two training images per class and one epoch, the expected value is pipeline validation, not accuracy. The run confirms that real images, class metadata, augmentation, model forward/backward, validation metrics, and bundle export work together.
+
+### 22.5 Reproduction
+
+Run a smoke training pass from a clean working tree after Section 2 artifacts exist:
+
+```powershell
+python scripts\train_pestnet.py `
+  --max-epochs 1 `
+  --limit-train-per-class 2 `
+  --limit-val-per-class 1 `
+  --device cpu `
+  --bundle-dir artifacts\models\pestnet_s_smoke
+```
+
+Run the configured baseline experiment when ready to spend real training time:
+
+```powershell
+python scripts\train_pestnet.py --config configs\train\pestnet_s.yaml --device cpu
+```
+
+Outputs are ignored by Git:
+
+```text
+artifacts/runs/pestnet_s/<run-id>/history.csv
+artifacts/runs/pestnet_s/<run-id>/metadata.json
+artifacts/runs/pestnet_s/<run-id>/metrics.json
+artifacts/models/pestnet_s_latest/model.pt
+artifacts/models/pestnet_s_latest/metadata.json
+artifacts/models/pestnet_s_latest/metrics.json
+```
+
+### 22.6 Section 3 boundary
+
+Section 3 does not promote a production model, open the official test split, tune rejection thresholds, replace the FastAPI service, or rebuild Docker. Those belong to the next sections.
+
+Approval of this section authorizes **Section 4: inference bundle and API migration**. The next section should load a model bundle, expose `/api/v1/model` and `/api/v1/predictions`, return accepted/uncertain/unsupported states, and preserve first-run behavior without asking the user to train inside the app.

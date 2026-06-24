@@ -1,0 +1,27 @@
+# Training starts from the audited 12-class IP102 subset. The official test split
+# stays closed until model selection and rejection thresholds are frozen.
+data:
+  dataset_root: data/raw/ip102/ip102_v1.1
+  manifest: artifacts/data/ip102_manifest.csv
+  class_review: configs/data/ip102_class_review.yaml
+  selected_class_ids: [1, 8, 40, 87, 72, 77, 83, 85, 58, 75, 89, 98]
+  image_size: 224
+
+model:
+  name: pestnet_s
+  width: 32
+  dropout: 0.25
+
+training:
+  seed: 2026
+  epochs: 18
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  device: auto
+  num_workers: 0
+  class_strategy: weighted_loss
+
+outputs:
+  run_dir: artifacts/runs/pestnet_s
+  bundle_dir: artifacts/models/pestnet_s_latest
