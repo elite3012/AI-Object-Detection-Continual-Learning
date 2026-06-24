@@ -2,7 +2,7 @@
 
 An image classification service that can learn a new visual class from a small set of reference images. It uses a frozen CLIP image encoder and stores one incremental prototype per class, so adding a class does not require retraining or redeploying the backbone.
 
-The repository includes a FastAPI service, a Streamlit operations dashboard, persistent prototype memory, feedback updates, rolling unknown-rate metrics, a folder-based evaluation command, automated tests, and a two-service Docker deployment.
+The repository includes a FastAPI service, a responsive inspection workspace, persistent prototype memory, feedback updates, rolling unknown-rate metrics, a folder-based evaluation command, automated tests, and a single-container deployment.
 
 ## How It Works
 
@@ -32,11 +32,11 @@ flowchart LR
 docker compose up --build
 ```
 
-- Dashboard: `http://localhost:8501`
+- Web app: `http://localhost:8000`
 - API documentation: `http://localhost:8000/docs`
 - Health endpoint: `http://localhost:8000/health`
 
-The first inference request downloads the configured CLIP checkpoint. Docker Compose keeps the model cache and prototype state in named volumes, so subsequent starts reuse them.
+The image build downloads the configured CLIP checkpoint and prepares three connector-inspection prototypes. When the container becomes healthy, the web app already has four fixtures and an initial prediction. Prototype updates persist in a named volume.
 
 ## API Workflow
 
@@ -83,21 +83,25 @@ python -m pip install -r requirements-dev.txt
 python -m uvicorn api:app --reload --port 8000
 ```
 
-In a second terminal:
+For an offline UI/API smoke test without downloading CLIP:
 
 ```powershell
-$env:ADAPTIVE_VISION_API_URL = "http://localhost:8000"
-python -m streamlit run dashboard.py
+$env:VISION_ENCODER = "visual"
+$env:VISION_STATE_PATH = "artifacts/smoke-prototypes.json"
+python -m uvicorn api:app --reload --port 8000
 ```
+
+Open `http://localhost:8000`. The `visual` encoder is a deterministic smoke-test fallback; Docker and normal local runs use CLIP.
 
 Runtime settings can be copied from `.env.example` or supplied by the deployment environment.
 
 | Variable | Default | Description |
 |---|---|---|
 | `VISION_MODEL_NAME` | `openai/clip-vit-base-patch32` | Hugging Face checkpoint |
+| `VISION_ENCODER` | `clip` | `clip` for production or `visual` for offline smoke tests |
 | `VISION_DEVICE` | `auto` | `auto`, `cpu`, or `cuda` |
 | `VISION_STATE_PATH` | `artifacts/prototypes.json` | Persistent prototype snapshot |
-| `VISION_CONFIDENCE_THRESHOLD` | `0.55` | Minimum top similarity for a known result |
+| `VISION_CONFIDENCE_THRESHOLD` | `0.90` | Minimum top similarity for a known result |
 | `VISION_DRIFT_WINDOW_SIZE` | `500` | Number of predictions retained in memory |
 | `VISION_MAX_UPLOAD_MB` | `10` | Per-file upload limit |
 
@@ -119,7 +123,7 @@ dataset/
 python -m eval.benchmark dataset --support-per-class 5 --output benchmark-results.json
 ```
 
-Do not treat the default `0.55` threshold as universal. Calibrate it on validation data from the target domain and inspect both accuracy and unknown rate.
+Do not treat the demo's `0.90` threshold as universal. Calibrate it on validation data from the target domain and inspect both accuracy and unknown rate.
 
 ## Tests
 
@@ -128,24 +132,29 @@ python -m pytest
 python -m ruff check .
 ```
 
-The tests use a deterministic color embedder instead of downloading CLIP. They cover incremental prototype updates, persistence, dimension validation, known and unknown predictions, feedback, and the multipart API workflow.
+The tests use a deterministic color embedder instead of downloading CLIP. They cover incremental prototype updates, persistence, dimension validation, known and unknown predictions, feedback, multipart uploads, demo bootstrap, bundled images, and the web entry point.
 
 ## Project Layout
 
 ```text
-api.py                         FastAPI application and HTTP validation
-dashboard.py                   Streamlit client for API operations
+api.py                         FastAPI application, demo lifecycle, and web routes
+index.html                     Inspection workspace and concise in-app guidance
+app.js                         API client and interaction state
+styles.css                     Responsive operational UI
+bootstrap_demo.py              Build-time prototype preparation
 models/
   adaptive_service.py          Application workflow and decision threshold
   embeddings.py                Lazy CLIP adapter
   prototype_memory.py          Incremental prototypes and JSON persistence
   drift.py                     Rolling operational metrics
   config.py                    Environment configuration
+  demo_catalog.py              Deterministic connector inspection fixtures
+  visual_embeddings.py         Offline smoke-test encoder
 eval/
   benchmark.py                 Folder-based few-shot evaluation
   test_*.py                    Unit and API tests
-Dockerfile                     Shared API/dashboard image
-docker-compose.yml             Two-service local deployment
+Dockerfile                     Model-preloaded application image
+docker-compose.yml             Single-service deployment with persistent state
 ```
 
 ## Boundaries
@@ -154,6 +163,7 @@ docker-compose.yml             Two-service local deployment
 - Drift metrics are process-local and reset on restart. Export them to an observability backend for production use.
 - Prototype classification works best when class appearance is coherent. Fine-grained domains may require a trained metric head or supervised fine-tuning.
 - The service does not retain uploaded source images. Only aggregate embedding sums and counts are persisted.
+- Built-in fixtures are a functional smoke test, not an accuracy benchmark. Use the evaluation command with domain data for reported metrics.
 
 ## License
 

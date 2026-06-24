@@ -1,7 +1,9 @@
 services:
-  api:
+  app:
     build:
       context: .
+      args:
+        VISION_MODEL_NAME: ${VISION_MODEL_NAME:-openai/clip-vit-base-patch32}
     image: adaptive-vision-service:latest
     ports:
       - "8000:8000"
@@ -9,38 +11,10 @@ services:
       VISION_MODEL_NAME: ${VISION_MODEL_NAME:-openai/clip-vit-base-patch32}
       VISION_DEVICE: ${VISION_DEVICE:-auto}
       VISION_STATE_PATH: /app/artifacts/prototypes.json
-      VISION_CONFIDENCE_THRESHOLD: ${VISION_CONFIDENCE_THRESHOLD:-0.55}
+      VISION_CONFIDENCE_THRESHOLD: ${VISION_CONFIDENCE_THRESHOLD:-0.90}
     volumes:
       - prototype-data:/app/artifacts
-      - model-cache:/app/.cache/huggingface
-    restart: unless-stopped
-
-  dashboard:
-    image: adaptive-vision-service:latest
-    command:
-      - python
-      - -m
-      - streamlit
-      - run
-      - dashboard.py
-      - --server.address=0.0.0.0
-      - --server.port=8501
-      - --server.headless=true
-      - --browser.gatherUsageStats=false
-    ports:
-      - "8501:8501"
-    environment:
-      ADAPTIVE_VISION_API_URL: http://api:8000
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
     restart: unless-stopped
 
 volumes:
   prototype-data:
-  model-cache:

@@ -38,3 +38,29 @@ def test_teach_and_predict_api() -> None:
     assert predict.status_code == 200
     assert predict.json()["label"] == "red"
     assert predict.json()["matches"][0]["similarity"] > 0.99
+
+
+def test_first_run_demo_workflow_and_web_app() -> None:
+    service = AdaptiveVisionService(
+        MeanColorEmbedder(),
+        PrototypeMemory(),
+        confidence_threshold=0.8,
+    )
+    client = TestClient(create_app(service))
+
+    web_app = client.get("/")
+    initial = client.get("/v1/demo")
+    bootstrap = client.post("/v1/demo/bootstrap")
+    image = client.get("/v1/demo/samples/connector-pass/image")
+    prediction = client.post("/v1/demo/samples/connector-pass/predict")
+
+    assert web_app.status_code == 200
+    assert "SignalLens" in web_app.text
+    assert initial.json()["ready"] is False
+    assert len(initial.json()["samples"]) == 4
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["ready"] is True
+    assert len(service.classes()) == 3
+    assert image.headers["content-type"] == "image/png"
+    assert prediction.status_code == 200
+    assert prediction.json()["label"] == "connector-pass"

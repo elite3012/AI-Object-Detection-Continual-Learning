@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Adaptive visual inspection with few-shot class updates." />
+    <title>SignalLens | Adaptive Vision</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="setup-screen" class="setup-screen" aria-live="polite">
+      <div class="setup-box">
+        <div class="setup-mark" aria-hidden="true"></div>
+        <p class="eyebrow">FIRST-RUN SETUP</p>
+        <h1>Preparing the inspection workspace</h1>
+        <p id="setup-message">Connecting to the vision service...</p>
+        <div class="progress-track"><span></span></div>
+        <small>The model and demo classes are prepared once, then reused.</small>
+      </div>
+    </div>
+
+    <div id="app" class="app" hidden>
+      <header class="topbar">
+        <a class="brand" href="#inspect" aria-label="SignalLens inspection workspace">
+          <span class="brand-mark" aria-hidden="true"><i></i></span>
+          <span><strong>SignalLens</strong><small>Adaptive visual inspection</small></span>
+        </a>
+        <div class="topbar-actions">
+          <span id="model-name" class="model-name">Vision encoder</span>
+          <span id="service-status" class="service-status"><i></i> Connecting</span>
+          <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">OpenAPI</a>
+        </div>
+      </header>
+
+      <div class="app-shell">
+        <aside class="sidebar">
+          <nav aria-label="Workspace navigation">
+            <button class="nav-item active" data-view="inspect">Inspect</button>
+            <button class="nav-item" data-view="classes">Classes</button>
+            <button class="nav-item" data-view="signals">Signals</button>
+            <button class="nav-item" data-view="api">API</button>
+          </nav>
+          <div class="sidebar-note">
+            <span>LIVE MEMORY</span>
+            <strong id="sidebar-class-count">0 classes</strong>
+            <small>Feedback updates prototypes without retraining.</small>
+          </div>
+        </aside>
+
+        <main>
+          <section class="page active" data-page="inspect">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INSPECTION WORKSPACE</p>
+                <h1>Classify, reject, improve.</h1>
+                <p>Start with a built-in fixture or inspect your own image.</p>
+              </div>
+              <span id="demo-ready" class="readiness">Demo checking</span>
+            </div>
+
+            <ol class="workflow" aria-label="Three-step inspection guide">
+              <li><span>1</span><div><strong>Choose</strong><small>Pick a sample or upload</small></div></li>
+              <li><span>2</span><div><strong>Inspect</strong><small>Review ranked similarity</small></div></li>
+              <li><span>3</span><div><strong>Correct</strong><small>Feed back the right class</small></div></li>
+            </ol>
+
+            <div class="inspection-grid">
+              <section class="sample-panel" aria-labelledby="sample-heading">
+                <div class="panel-heading">
+                  <div><span>DEMO FIXTURES</span><h2 id="sample-heading">Try a known case</h2></div>
+                </div>
+                <div id="sample-list" class="sample-list"></div>
+              </section>
+
+              <section class="viewer-panel" aria-labelledby="viewer-heading">
+                <div class="panel-heading">
+                  <div><span>INPUT</span><h2 id="viewer-heading">Inspection image</h2></div>
+                  <span id="input-source" class="source-chip">Demo</span>
+                </div>
+                <div class="image-stage">
+                  <img id="inspection-image" alt="Selected inspection sample" />
+                  <div class="scan-line" aria-hidden="true"></div>
+                  <span class="frame-corner top-left"></span>
+                  <span class="frame-corner top-right"></span>
+                  <span class="frame-corner bottom-left"></span>
+                  <span class="frame-corner bottom-right"></span>
+                </div>
+                <div class="upload-row">
+                  <label class="upload-control" for="image-upload">
+                    <strong>Use your image</strong>
+                    <small>PNG, JPG or WebP up to 10 MB</small>
+                    <input id="image-upload" type="file" accept="image/png,image/jpeg,image/webp" />
+                  </label>
+                  <button id="predict-upload" class="button primary" disabled>Run inspection</button>
+                </div>
+              </section>
+
+              <section class="result-panel" aria-labelledby="result-heading">
+                <div class="panel-heading">
+                  <div><span>DECISION</span><h2 id="result-heading">Model result</h2></div>
+                  <span id="result-latency" class="source-chip">Ready</span>
+                </div>
+                <div id="result-empty" class="result-empty">
+                  <div class="result-placeholder"></div>
+                  <strong>Select an inspection image</strong>
+                  <p>The ranked result and rejection decision appear here.</p>
+                </div>
+                <div id="result-content" hidden>
+                  <div class="outcome-row">
+                    <span id="outcome-indicator" class="outcome-indicator"></span>
+                    <div><small id="outcome-type">KNOWN CLASS</small><h3 id="outcome-label">connector-pass</h3></div>
+                  </div>
+                  <div id="match-list" class="match-list"></div>
+                  <p id="threshold-note" class="threshold-note"></p>
+                  <div class="feedback-box">
+                    <label for="correction-label">Wrong result?</label>
+                    <div><input id="correction-label" placeholder="Correct class name" /><button id="submit-feedback" class="button secondary">Update</button></div>
+                    <small>One confirmed image updates class memory immediately.</small>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="page" data-page="classes">
+            <div class="page-heading">
+              <div><p class="eyebrow">CLASS MEMORY</p><h1>Teach a visual class.</h1><p>Add a few representative images. No training job or redeploy.</p></div>
+            </div>
+            <div class="classes-layout">
+              <section class="teach-panel">
+                <div class="panel-heading"><div><span>NEW OR EXISTING</span><h2>Add examples</h2></div></div>
+                <form id="teach-form">
+                  <label>Class name<input id="teach-label" required maxlength="80" placeholder="scratched-terminal" /></label>
+                  <label class="drop-zone" for="teach-images"><strong>Select 3-8 reference images</strong><small>Mix angles and lighting for a stable prototype.</small><input id="teach-images" type="file" accept="image/png,image/jpeg,image/webp" multiple required /></label>
+                  <div id="teach-file-count" class="file-count">No images selected</div>
+                  <button class="button primary full" type="submit">Add to class memory</button>
+                </form>
+              </section>
+              <section class="inventory-panel">
+                <div class="panel-heading"><div><span>ACTIVE PROTOTYPES</span><h2>Class inventory</h2></div><button id="refresh-classes" class="text-button">Refresh</button></div>
+                <div id="class-list" class="class-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="page" data-page="signals">
+            <div class="page-heading"><div><p class="eyebrow">OPERATIONAL SIGNALS</p><h1>Know when the data changes.</h1><p>Similarity and rejection trends expose traffic outside current class memory.</p></div></div>
+            <div id="metric-grid" class="metric-grid"></div>
+            <section class="signal-detail">
+              <div><span>DECISION POLICY</span><h2>Unknown detection</h2><p>A result is accepted only when its nearest prototype clears the configured cosine-similarity threshold. Low matches are rejected instead of forcing a class.</p></div>
+              <div class="policy-flow"><span>Image embedding</span><i></i><span>Nearest prototype</span><i></i><span>Threshold gate</span><i></i><span>Class or unknown</span></div>
+            </section>
+          </section>
+
+          <section class="page" data-page="api">
+            <div class="page-heading"><div><p class="eyebrow">INTEGRATION</p><h1>Use the same workflow over HTTP.</h1><p>The web app is an API client, not a separate model path.</p></div><a class="button primary" href="/docs" target="_blank" rel="noreferrer">Explore OpenAPI</a></div>
+            <div id="endpoint-list" class="endpoint-list"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

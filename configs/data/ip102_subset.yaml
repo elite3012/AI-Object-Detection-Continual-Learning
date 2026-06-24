@@ -1,0 +1,35 @@
+# Paths are relative to dataset.root. Point dataset.root at the directory that
+# contains the extracted classification metadata and image directory.
+dataset:
+  root: data/raw/ip102/ip102_v1.1
+  classes_file: classes.txt
+  images_root: images
+  split_files:
+    train: train.txt
+    val: val.txt
+    test: test.txt
+
+manifest:
+  # Use zero or one if the downloaded split omits a boundary class and auto is ambiguous.
+  label_base: auto
+  workers: 4
+
+audit:
+  near_duplicate_distance: 4
+  near_duplicate_report_limit: 500
+
+shortlist:
+  target_classes: 12
+  min_train: 100
+  min_val: 20
+  min_test: 20
+  max_exact_cross_split_duplicate_records: 0
+  # Reviewed after the full-data audit. The set keeps four head, four middle,
+  # and four tail classes while avoiding family-level and duplicate-blocked labels.
+  manual_class_ids: [1, 8, 40, 87, 72, 77, 83, 85, 58, 75, 89, 98]
+
+outputs:
+  manifest: artifacts/data/ip102_manifest.csv
+  audit_json: artifacts/data/ip102_audit.json
+  audit_markdown: artifacts/data/ip102_eda.md
+  shortlist: artifacts/data/ip102_shortlist.csv

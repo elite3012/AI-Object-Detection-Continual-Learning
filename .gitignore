@@ -11,6 +11,7 @@ venv/
 .ruff_cache/
 
 artifacts/
+/data/
 benchmark-results.json
 *.pt
 *.pth

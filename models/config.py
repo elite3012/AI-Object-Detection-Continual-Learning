@@ -10,7 +10,7 @@ class Settings:
     model_name: str = "openai/clip-vit-base-patch32"
     device: str = "auto"
     state_path: Path = Path("artifacts/prototypes.json")
-    confidence_threshold: float = 0.55
+    confidence_threshold: float = 0.90
     drift_window_size: int = 500
     max_upload_mb: int = 10
 

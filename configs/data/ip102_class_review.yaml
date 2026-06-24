@@ -1,0 +1,123 @@
+schema_version: 1
+reviewed_on: 2026-06-20
+status: approved_for_baseline
+notes:
+  - Dataset labels are preserved for traceability; canonical names correct spelling and synonyms.
+  - Vietnamese names are concise UI labels, not agronomic treatment advice.
+  - External assets prove out-of-dataset test availability and are not training data.
+
+classes:
+  - ip102_id: 1
+    dataset_label: rice leaf roller
+    canonical_name: Cnaphalocrocis medinalis
+    common_name_en: rice leaf folder
+    common_name_vi: Sâu cuốn lá nhỏ
+    stratum: head
+    counts: {train: 669, val: 111, test: 335}
+    external_source: {provider: Wikimedia Commons, license: CC BY-SA 4.0, url: https://upload.wikimedia.org/wikipedia/commons/8/83/Cnaphalocrocis_medinalis.jpg}
+
+  - ip102_id: 8
+    dataset_label: brown plant hopper
+    canonical_name: Nilaparvata lugens
+    common_name_en: brown planthopper
+    common_name_vi: Rầy nâu
+    stratum: head
+    counts: {train: 500, val: 83, test: 251}
+    external_source: {provider: Wikimedia Commons, license: CC BY 3.0 US, url: https://upload.wikimedia.org/wikipedia/commons/d/d6/Nilaparvata_lugens_-_Brown_planthopper_-_UGA5190055.jpg}
+
+  - ip102_id: 40
+    dataset_label: beet army worm
+    canonical_name: Spodoptera exigua
+    common_name_en: beet armyworm
+    common_name_vi: Sâu xanh da láng
+    stratum: head
+    counts: {train: 962, val: 160, test: 482}
+    external_source: {provider: Wikimedia Commons, license: CC BY-SA 3.0, url: https://upload.wikimedia.org/wikipedia/commons/3/3b/Spodoptera_exigua1.jpg}
+
+  - ip102_id: 87
+    dataset_label: Prodenia litura
+    canonical_name: Spodoptera litura
+    common_name_en: tobacco cutworm
+    common_name_vi: Sâu khoang
+    stratum: head
+    counts: {train: 782, val: 130, test: 392}
+    taxonomy_note: The dataset uses the historical synonym Prodenia litura.
+    external_source: {provider: Wikimedia Commons, license: CC BY 4.0, url: https://upload.wikimedia.org/wikipedia/commons/e/e9/202501_Spodoptera_litura.svg}
+
+  - ip102_id: 72
+    dataset_label: Trialeurodes vaporariorum
+    canonical_name: Trialeurodes vaporariorum
+    common_name_en: greenhouse whitefly
+    common_name_vi: Bọ phấn nhà kính
+    stratum: middle
+    counts: {train: 415, val: 69, test: 208}
+    external_source: {provider: Wikimedia Commons, license: CC BY 4.0, url: https://upload.wikimedia.org/wikipedia/commons/7/78/202403_Greenhouse_whitefly.svg}
+
+  - ip102_id: 77
+    dataset_label: Icerya purchasi Maskell
+    canonical_name: Icerya purchasi
+    common_name_en: cottony cushion scale
+    common_name_vi: Rệp sáp bông
+    stratum: middle
+    counts: {train: 433, val: 72, test: 217}
+    external_source: {provider: Wikimedia Commons, license: Public domain, url: https://upload.wikimedia.org/wikipedia/commons/2/25/Icerya-purchasi.jpg}
+
+  - ip102_id: 83
+    dataset_label: Aleurocanthus spiniferus
+    canonical_name: Aleurocanthus spiniferus
+    common_name_en: orange spiny whitefly
+    common_name_vi: Bọ phấn gai đen
+    stratum: middle
+    counts: {train: 414, val: 68, test: 208}
+    external_source: {provider: Wikimedia Commons, license: CC BY-SA 4.0, url: https://upload.wikimedia.org/wikipedia/commons/8/83/ALECSN_11766_-_Adulte.jpg}
+
+  - ip102_id: 85
+    dataset_label: Dacus dorsalis(Hendel)
+    canonical_name: Bactrocera dorsalis
+    common_name_en: oriental fruit fly
+    common_name_vi: Ruồi đục quả phương Đông
+    stratum: middle
+    counts: {train: 263, val: 44, test: 132}
+    taxonomy_note: The dataset uses the historical combination Dacus dorsalis.
+    external_source: {provider: Wikimedia Commons, license: Public domain, url: https://upload.wikimedia.org/wikipedia/commons/a/a3/Bactrocera_dorsalis.jpg}
+
+  - ip102_id: 58
+    dataset_label: Apolygus lucorum
+    canonical_name: Apolygus lucorum
+    common_name_en: green mirid bug
+    common_name_vi: Bọ xít xanh Apolygus
+    stratum: tail
+    counts: {train: 228, val: 38, test: 115}
+    external_source: {provider: Wikimedia Commons, license: CC0, url: https://upload.wikimedia.org/wikipedia/commons/c/ce/Apolygus_lucorum_%28Miridae_sp.%29%2C_Lentse_Waard%2C_the_Netherlands.jpg}
+
+  - ip102_id: 75
+    dataset_label: Panonchus citri McGregor
+    canonical_name: Panonychus citri
+    common_name_en: citrus red mite
+    common_name_vi: Nhện đỏ cam chanh
+    stratum: tail
+    counts: {train: 231, val: 38, test: 116}
+    taxonomy_note: The dataset misspells the genus as Panonchus.
+    external_source:
+      provider: iNaturalist
+      license: CC BY
+      attribution: the natural moment
+      url: https://inaturalist-open-data.s3.amazonaws.com/photos/629202458/large.jpg
+
+  - ip102_id: 89
+    dataset_label: Phyllocnistis citrella Stainton
+    canonical_name: Phyllocnistis citrella
+    common_name_en: citrus leafminer
+    common_name_vi: Sâu vẽ bùa cam quýt
+    stratum: tail
+    counts: {train: 242, val: 40, test: 122}
+    external_source: {provider: Wikimedia Commons, license: CC BY-SA 4.0, url: https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Larve_di_su_Phyllocnistis_citrella_su_Citrus_hystrix.jpg/1920px-Larve_di_su_Phyllocnistis_citrella_su_Citrus_hystrix.jpg}
+
+  - ip102_id: 98
+    dataset_label: Chlumetia transversa
+    canonical_name: Chlumetia transversa
+    common_name_en: mango shoot borer
+    common_name_vi: Sâu đục chồi xoài
+    stratum: tail
+    counts: {train: 183, val: 30, test: 92}
+    external_source: {provider: Wikimedia Commons, license: CC BY 2.0, url: https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/A43-20160906-255_%2830401246343%29.jpg/1920px-A43-20160906-255_%2830401246343%29.jpg}

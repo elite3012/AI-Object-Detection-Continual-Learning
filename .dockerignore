@@ -10,23 +10,9 @@ __pycache__/
 .ruff_cache/
 
 artifacts/
+/data/
 benchmark-results.json
 *.pt
 *.pth
 
 .env
-.streamlit/secrets.toml
-
-# Exclude the deprecated benchmark implementation from the runtime image.
-app.py
-assets/
-data/
-optimizers/
-replay/
-trainers/
-eval/logger.py
-eval/metrics.py
-models/multimodal_fusion.py
-models/peft_lora.py
-models/simple_cnn_multiclass.py
-models/text_encoder.py
