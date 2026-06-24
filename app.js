@@ -1,6 +1,7 @@
 const state = {
-  demo: null,
-  selectedSample: null,
+  model: null,
+  examples: [],
+  selectedExample: null,
   currentFile: null,
   prediction: null,
 };
@@ -12,6 +13,7 @@ const elements = {
   serviceStatus: document.querySelector("#service-status"),
   modelName: document.querySelector("#model-name"),
   demoReady: document.querySelector("#demo-ready"),
+  demoWarning: document.querySelector("#demo-warning"),
   sidebarClassCount: document.querySelector("#sidebar-class-count"),
   sampleList: document.querySelector("#sample-list"),
   inspectionImage: document.querySelector("#inspection-image"),
@@ -26,12 +28,9 @@ const elements = {
   outcomeLabel: document.querySelector("#outcome-label"),
   matchList: document.querySelector("#match-list"),
   thresholdNote: document.querySelector("#threshold-note"),
-  correctionLabel: document.querySelector("#correction-label"),
-  submitFeedback: document.querySelector("#submit-feedback"),
-  teachForm: document.querySelector("#teach-form"),
-  teachLabel: document.querySelector("#teach-label"),
-  teachImages: document.querySelector("#teach-images"),
-  teachFileCount: document.querySelector("#teach-file-count"),
+  correctionClass: document.querySelector("#correction-class"),
+  reviewNote: document.querySelector("#review-note"),
+  submitReview: document.querySelector("#submit-review"),
   classList: document.querySelector("#class-list"),
   metricGrid: document.querySelector("#metric-grid"),
   endpointList: document.querySelector("#endpoint-list"),
@@ -41,7 +40,9 @@ const elements = {
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   const contentType = response.headers.get("content-type") || "";
-  const body = contentType.includes("application/json") ? await response.json() : await response.text();
+  const body = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
   if (!response.ok) {
     const detail = typeof body === "object" ? body.detail : body;
     throw new Error(detail || `Request failed with ${response.status}`);
@@ -53,7 +54,7 @@ function showToast(message, tone = "success") {
   elements.toast.textContent = message;
   elements.toast.className = `toast visible ${tone}`;
   window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => (elements.toast.className = "toast"), 3600);
+  showToast.timer = window.setTimeout(() => (elements.toast.className = "toast"), 3400);
 }
 
 function setServiceState(online, label) {
@@ -68,51 +69,119 @@ function switchView(view) {
   document.querySelectorAll(".page").forEach((page) => {
     page.classList.toggle("active", page.dataset.page === view);
   });
-  if (view === "classes") refreshClasses();
-  if (view === "signals") refreshMetrics();
   window.location.hash = view;
 }
 
-function renderSamples(samples) {
-  elements.sampleList.innerHTML = samples
+function renderExamples() {
+  elements.sampleList.innerHTML = state.examples
     .map(
       (sample) => `
         <button class="sample-item" data-sample-id="${sample.id}">
           <img src="${sample.image_url}" alt="${sample.title}" />
-          <span><strong>${sample.title}</strong><small>${sample.expected}</small></span>
+          <span>
+            <strong>${sample.title}</strong>
+            <small>${sample.subtitle}</small>
+          </span>
           <i aria-hidden="true"></i>
         </button>`,
     )
     .join("");
-
   elements.sampleList.querySelectorAll(".sample-item").forEach((button) => {
-    button.addEventListener("click", () => selectDemoSample(button.dataset.sampleId));
+    button.addEventListener("click", () => selectExample(button.dataset.sampleId));
   });
 }
 
-async function selectDemoSample(sampleId, silent = false) {
-  const sample = state.demo.samples.find((item) => item.id === sampleId);
+function renderClasses() {
+  const classes = state.model.classes;
+  elements.sidebarClassCount.textContent = `${classes.length} classes`;
+  elements.correctionClass.innerHTML = [
+    '<option value="">Không chắc / bỏ qua</option>',
+    ...classes.map(
+      (item) =>
+        `<option value="${item.ip102_id}">${item.common_name_vi} - ${item.canonical_name}</option>`,
+    ),
+  ].join("");
+  elements.classList.innerHTML = classes
+    .map(
+      (item) => `
+        <div class="class-row pest-class-row">
+          <span class="class-dot"></span>
+          <div>
+            <strong>${item.common_name_vi}</strong>
+            <small>${item.canonical_name}</small>
+          </div>
+          <span>${item.stratum}</span>
+          <code>${item.ip102_id}</code>
+        </div>`,
+    )
+    .join("");
+}
+
+function renderEvidence() {
+  const model = state.model.model;
+  const dataset = state.model.dataset || {};
+  const thresholds = state.model.thresholds;
+  const cards = [
+    ["Run", state.model.run_id || "unknown", "Model version"],
+    ["Classes", state.model.classes.length, "Reviewed IP102 subset"],
+    ["Params", model.parameter_count.toLocaleString("en-US"), model.name],
+    ["Image", `${state.model.preprocessing.image_size}px`, "Center crop inference"],
+    ["Accept", thresholds.accepted.toFixed(2), "Confidence threshold"],
+    ["Manifest", shortHash(dataset.manifest_sha256), "Dataset fingerprint"],
+  ];
+  elements.metricGrid.innerHTML = cards
+    .map(
+      ([label, value, note]) =>
+        `<div class="metric"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`,
+    )
+    .join("");
+}
+
+function renderEndpoints() {
+  const endpoints = [
+    ["GET", "/api/v1/health/ready", "Readiness includes model loading"],
+    ["GET", "/api/v1/model", "Model card, class map, preprocessing"],
+    ["GET", "/api/v1/examples", "Licensed sample metadata"],
+    ["POST", "/api/v1/predictions", "Classify one uploaded image"],
+    ["POST", "/api/v1/reviews", "Store offline human feedback"],
+    ["GET", "/docs", "OpenAPI schema"],
+  ];
+  elements.endpointList.innerHTML = endpoints
+    .map(
+      ([method, path, description]) => `
+        <div class="endpoint-row">
+          <span class="method ${method.toLowerCase()}">${method}</span>
+          <code>${path}</code>
+          <p>${description}</p>
+        </div>`,
+    )
+    .join("");
+}
+
+async function selectExample(exampleId, silent = false) {
+  const sample = state.examples.find((item) => item.id === exampleId);
   if (!sample) return;
-  state.selectedSample = sample;
+  state.selectedExample = sample;
   state.currentFile = null;
   elements.imageUpload.value = "";
   elements.predictUpload.disabled = true;
-  elements.inspectionImage.src = sample.image_url;
+  elements.inspectionImage.src = `${sample.image_url}?t=${Date.now()}`;
   elements.inspectionImage.alt = sample.title;
-  elements.inputSource.textContent = "Demo fixture";
+  elements.inputSource.textContent = "Sample";
   document.querySelectorAll(".sample-item").forEach((button) => {
-    button.classList.toggle("active", button.dataset.sampleId === sampleId);
+    button.classList.toggle("active", button.dataset.sampleId === exampleId);
   });
-  await predictDemoSample(sampleId, silent);
+  await predictExample(exampleId, silent);
 }
 
-async function predictDemoSample(sampleId, silent) {
-  const startedAt = performance.now();
+async function predictExample(exampleId, silent) {
   setResultLoading();
   try {
-    const result = await api(`/v1/demo/samples/${sampleId}/predict`, { method: "POST" });
-    renderPrediction(result, performance.now() - startedAt);
-    if (!silent) showToast("Inspection completed");
+    const result = await api(`/api/v1/examples/${exampleId}/predict?top_k=3`, {
+      method: "POST",
+    });
+    renderPrediction(result);
+    if (!silent) showToast("Prediction completed");
   } catch (error) {
     showResultError(error.message);
   }
@@ -122,11 +191,13 @@ async function predictUploadedImage() {
   if (!state.currentFile) return;
   const form = new FormData();
   form.append("file", state.currentFile);
-  const startedAt = performance.now();
   setResultLoading();
   try {
-    const result = await api("/v1/predict?top_k=3", { method: "POST", body: form });
-    renderPrediction(result, performance.now() - startedAt);
+    const result = await api("/api/v1/predictions?top_k=3", {
+      method: "POST",
+      body: form,
+    });
+    renderPrediction(result);
   } catch (error) {
     showResultError(error.message);
   }
@@ -135,195 +206,141 @@ async function predictUploadedImage() {
 function setResultLoading() {
   elements.resultEmpty.hidden = false;
   elements.resultContent.hidden = true;
-  elements.resultEmpty.innerHTML = '<div class="spinner"></div><strong>Inspecting image</strong><p>Comparing against class prototypes...</p>';
+  elements.resultEmpty.innerHTML =
+    '<div class="spinner"></div><strong>Đang chạy inference</strong><p>Chuẩn hóa ảnh và tính top-k...</p>';
   elements.resultLatency.textContent = "Running";
 }
 
-function renderPrediction(result, elapsedMs) {
+function renderPrediction(result) {
   state.prediction = result;
+  const top = result.top_k[0];
   elements.resultEmpty.hidden = true;
   elements.resultContent.hidden = false;
-  elements.resultLatency.textContent = `${Math.round(elapsedMs)} ms`;
-  elements.outcomeType.textContent = result.is_unknown ? "REJECTED AS UNKNOWN" : "KNOWN CLASS";
-  elements.outcomeLabel.textContent = result.is_unknown ? "No confident match" : result.label;
-  elements.outcomeIndicator.className = `outcome-indicator ${result.is_unknown ? "unknown" : "known"}`;
-  elements.matchList.innerHTML = result.matches
+  elements.resultLatency.textContent = `${Math.round(result.latency_ms)} ms`;
+  elements.outcomeType.textContent = result.decision.toUpperCase();
+  elements.outcomeLabel.textContent =
+    result.decision === "accepted" ? top.common_name_vi : decisionLabel(result.decision);
+  elements.outcomeIndicator.className = `outcome-indicator ${decisionTone(result.decision)}`;
+  elements.matchList.innerHTML = result.top_k
     .map((match, index) => {
-      const percent = Math.max(0, Math.min(100, match.similarity * 100));
-      return `<div class="match-row"><div><span>${index + 1}. ${match.label}</span><strong>${match.similarity.toFixed(3)}</strong></div><div class="match-track"><i style="width:${percent}%"></i></div><small>${match.examples} reference examples</small></div>`;
+      const percent = Math.max(0, Math.min(100, match.confidence * 100));
+      return `
+        <div class="match-row">
+          <div>
+            <span>${index + 1}. ${match.common_name_vi}</span>
+            <strong>${percent.toFixed(1)}%</strong>
+          </div>
+          <div class="match-track"><i style="width:${percent}%"></i></div>
+          <small>${match.canonical_name} · ${match.stratum}</small>
+        </div>`;
     })
     .join("");
-  elements.thresholdNote.textContent = `Decision threshold: ${result.threshold.toFixed(2)} cosine similarity.`;
+  elements.thresholdNote.textContent = result.reason;
+}
+
+async function submitReview() {
+  if (!state.prediction) return showToast("Chưa có prediction để review", "error");
+  const top = state.prediction.top_k[0];
+  const corrected = elements.correctionClass.value;
+  try {
+    const result = await api("/api/v1/reviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prediction_id: state.prediction.prediction_id,
+        decision: state.prediction.decision,
+        predicted_class_id: top ? top.class_id : null,
+        corrected_class_id: corrected ? Number(corrected) : null,
+        note: elements.reviewNote.value.trim() || null,
+        image_consent: false,
+      }),
+    });
+    elements.reviewNote.value = "";
+    elements.correctionClass.value = "";
+    showToast(`Review #${result.review_id} saved`);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 function showResultError(message) {
   elements.resultContent.hidden = true;
   elements.resultEmpty.hidden = false;
-  elements.resultEmpty.innerHTML = `<strong>Inspection unavailable</strong><p>${message}</p>`;
+  elements.resultEmpty.innerHTML = `<strong>Không thể predict</strong><p>${message}</p>`;
   elements.resultLatency.textContent = "Error";
   showToast(message, "error");
 }
 
-async function submitFeedback() {
-  const label = elements.correctionLabel.value.trim();
-  if (!label) return showToast("Enter the correct class name", "error");
-  const form = new FormData();
-  if (state.currentFile) {
-    form.append("file", state.currentFile);
-  } else if (state.selectedSample) {
-    const image = await fetch(state.selectedSample.image_url).then((response) => response.blob());
-    form.append("file", image, `${state.selectedSample.id}.png`);
-  } else {
-    return showToast("Select an image first", "error");
-  }
-  try {
-    const result = await api(`/v1/feedback/${encodeURIComponent(label)}`, { method: "POST", body: form });
-    elements.correctionLabel.value = "";
-    showToast(`${result.label} updated to ${result.total_examples} examples`);
-    await refreshClasses();
-  } catch (error) {
-    showToast(error.message, "error");
-  }
+function decisionLabel(decision) {
+  if (decision === "uncertain") return "Cần kiểm tra thêm";
+  if (decision === "unsupported") return "Ngoài phạm vi hỗ trợ";
+  return "Đã nhận diện";
 }
 
-async function teachClass(event) {
-  event.preventDefault();
-  const label = elements.teachLabel.value.trim();
-  const files = Array.from(elements.teachImages.files);
-  if (!label || !files.length) return;
-  const form = new FormData();
-  files.forEach((file) => form.append("files", file));
-  const button = elements.teachForm.querySelector("button[type=submit]");
-  button.disabled = true;
-  button.textContent = "Embedding examples...";
-  try {
-    const result = await api(`/v1/classes/${encodeURIComponent(label)}/examples`, { method: "POST", body: form });
-    showToast(`${result.examples_added} examples added to ${result.label}`);
-    elements.teachForm.reset();
-    elements.teachFileCount.textContent = "No images selected";
-    await refreshClasses();
-  } catch (error) {
-    showToast(error.message, "error");
-  } finally {
-    button.disabled = false;
-    button.textContent = "Add to class memory";
-  }
+function decisionTone(decision) {
+  if (decision === "accepted") return "known";
+  if (decision === "unsupported") return "unknown";
+  return "uncertain";
 }
 
-async function refreshClasses() {
-  try {
-    const { classes } = await api("/v1/classes");
-    elements.sidebarClassCount.textContent = `${classes.length} ${classes.length === 1 ? "class" : "classes"}`;
-    elements.classList.innerHTML = classes.length
-      ? classes.map((item) => `<div class="class-row"><span class="class-dot"></span><div><strong>${item.label}</strong><small>Updated ${formatDate(item.updated_at)}</small></div><span>${item.examples} examples</span><button data-delete-class="${item.label}" title="Delete class" aria-label="Delete ${item.label}">&times;</button></div>`).join("")
-      : '<div class="empty-state"><strong>No classes yet</strong><p>Add examples to create the first prototype.</p></div>';
-    elements.classList.querySelectorAll("[data-delete-class]").forEach((button) => {
-      button.addEventListener("click", () => deleteClass(button.dataset.deleteClass));
-    });
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-
-async function deleteClass(label) {
-  if (!window.confirm(`Delete class "${label}" from prototype memory?`)) return;
-  try {
-    await api(`/v1/classes/${encodeURIComponent(label)}`, { method: "DELETE" });
-    showToast(`${label} deleted`);
-    await refreshClasses();
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-
-async function refreshMetrics() {
-  try {
-    const metrics = await api("/v1/metrics");
-    const cards = [
-      ["Classes", metrics.class_count, "Active prototypes"],
-      ["Examples", metrics.example_count, "Embedded references"],
-      ["Predictions", metrics.observations, `Rolling window of ${metrics.window_size}`],
-      ["Unknown rate", `${(metrics.unknown_rate * 100).toFixed(1)}%`, "Traffic rejected by threshold"],
-      ["Mean similarity", formatMetric(metrics.mean_top_similarity), "Average nearest match"],
-      ["P10 similarity", formatMetric(metrics.p10_top_similarity), "Lower confidence boundary"],
-    ];
-    elements.metricGrid.innerHTML = cards.map(([label, value, note]) => `<div class="metric"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join("");
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-
-function renderEndpoints() {
-  const endpoints = [
-    ["POST", "/v1/predict", "Classify an uploaded image"],
-    ["POST", "/v1/classes/{label}/examples", "Add reference examples"],
-    ["POST", "/v1/feedback/{label}", "Apply a human correction"],
-    ["GET", "/v1/classes", "Inspect class memory"],
-    ["GET", "/v1/metrics", "Read rolling operational signals"],
-    ["GET", "/health", "Check model and demo readiness"],
-  ];
-  elements.endpointList.innerHTML = endpoints.map(([method, path, description]) => `<div class="endpoint-row"><span class="method ${method.toLowerCase()}">${method}</span><code>${path}</code><p>${description}</p></div>`).join("");
-}
-
-function formatMetric(value) {
-  return value === null ? "No data" : Number(value).toFixed(3);
-}
-
-function formatDate(value) {
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+function shortHash(value) {
+  if (!value) return "n/a";
+  return `${String(value).slice(0, 8)}...`;
 }
 
 function bindEvents() {
-  document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => switchView(button.dataset.view));
+  });
   elements.imageUpload.addEventListener("change", () => {
     const [file] = elements.imageUpload.files;
     state.currentFile = file || null;
-    state.selectedSample = null;
+    state.selectedExample = null;
     elements.predictUpload.disabled = !file;
     if (file) {
       elements.inspectionImage.src = URL.createObjectURL(file);
       elements.inspectionImage.alt = file.name;
-      elements.inputSource.textContent = "Uploaded image";
-      document.querySelectorAll(".sample-item").forEach((button) => button.classList.remove("active"));
+      elements.inputSource.textContent = "Upload";
+      document.querySelectorAll(".sample-item").forEach((button) => {
+        button.classList.remove("active");
+      });
     }
   });
   elements.predictUpload.addEventListener("click", predictUploadedImage);
-  elements.submitFeedback.addEventListener("click", submitFeedback);
-  elements.teachForm.addEventListener("submit", teachClass);
-  elements.teachImages.addEventListener("change", () => {
-    const count = elements.teachImages.files.length;
-    elements.teachFileCount.textContent = count ? `${count} image${count === 1 ? "" : "s"} selected` : "No images selected";
-  });
-  document.querySelector("#refresh-classes").addEventListener("click", refreshClasses);
+  elements.submitReview.addEventListener("click", submitReview);
 }
 
 async function initialize() {
   bindEvents();
   renderEndpoints();
   try {
-    elements.setupMessage.textContent = "Checking service and demo memory...";
-    const health = await api("/health");
-    setServiceState(true, "Service online");
-    elements.modelName.textContent = health.model;
+    elements.setupMessage.textContent = "Loading model bundle...";
+    const ready = await api("/api/v1/health/ready");
+    state.model = await api("/api/v1/model");
+    const { examples } = await api("/api/v1/examples");
+    state.examples = examples;
 
-    state.demo = await api("/v1/demo");
-    renderSamples(state.demo.samples);
-    if (!state.demo.ready) {
-      elements.setupMessage.textContent = "Embedding built-in inspection fixtures. The first setup may take a moment...";
-      state.demo = await api("/v1/demo/bootstrap", { method: "POST" });
+    setServiceState(true, "Ready");
+    elements.modelName.textContent = ready.model_version;
+    elements.demoReady.textContent = "Ready";
+    elements.demoReady.classList.add("ready");
+    if (state.model.demo_model) {
+      elements.demoWarning.hidden = false;
+      elements.demoWarning.textContent =
+        "Demo model đang bật để smoke test UI/API. Train PestNet-S và mount bundle thật trước khi báo cáo metric.";
     }
 
-    elements.demoReady.textContent = "Demo ready";
-    elements.demoReady.classList.add("ready");
-    await Promise.all([refreshClasses(), refreshMetrics()]);
+    renderExamples();
+    renderClasses();
+    renderEvidence();
     elements.setupScreen.classList.add("done");
     elements.app.hidden = false;
     window.setTimeout(() => (elements.setupScreen.hidden = true), 350);
     const requestedView = window.location.hash.replace("#", "");
-    switchView(["inspect", "classes", "signals", "api"].includes(requestedView) ? requestedView : "inspect");
-    await selectDemoSample("connector-pass", true);
+    switchView(["inspect", "classes", "evidence", "api"].includes(requestedView) ? requestedView : "inspect");
+    if (state.examples.length) await selectExample(state.examples[0].id, true);
   } catch (error) {
-    setServiceState(false, "Service unavailable");
+    setServiceState(false, "Unavailable");
     elements.setupMessage.textContent = error.message;
     elements.setupScreen.classList.add("failed");
   }

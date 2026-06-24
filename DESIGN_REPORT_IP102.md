@@ -1,7 +1,7 @@
 # IP102 Pest Recognition System
 
 > Design report for review  
-> Status: **Implementation in progress - Sections 1, 2, and 3 completed**
+> Status: **Implementation in progress - Sections 1, 2, 3, and 4 completed**
 > Purpose: agree on the ML problem, system boundaries, workflow, deployment, and acceptance gates before changing the codebase.
 
 ## 1. Executive summary
@@ -1114,3 +1114,97 @@ artifacts/models/pestnet_s_latest/metrics.json
 Section 3 does not promote a production model, open the official test split, tune rejection thresholds, replace the FastAPI service, or rebuild Docker. Those belong to the next sections.
 
 Approval of this section authorizes **Section 4: inference bundle and API migration**. The next section should load a model bundle, expose `/api/v1/model` and `/api/v1/predictions`, return accepted/uncertain/unsupported states, and preserve first-run behavior without asking the user to train inside the app.
+
+## 23. Section 4 inference bundle and API migration
+
+> Implementation completed on 2026-06-24.
+> Scope: model-bundle inference, versioned API, browser workflow, runtime settings, Docker config, and legacy prototype cleanup.
+> Result: **API starts without the old CLIP/prototype stack and passes automated smoke tests**.
+
+### 23.1 Implemented scope
+
+Section 4 replaces the public runtime path:
+
+- FastAPI now loads a versioned PestNet-S model bundle instead of mutable prototype memory;
+- `/api/v1/health/live` and `/api/v1/health/ready` separate process liveness from model readiness;
+- `/api/v1/model` exposes model metadata, preprocessing, class map, thresholds, and demo warning;
+- `/api/v1/predictions` validates image uploads and returns `accepted`, `uncertain`, or `unsupported`;
+- `/api/v1/examples` exposes reviewed sample metadata and license/source fields;
+- `/api/v1/examples/{id}/predict` sends sample images through the same inference path as uploads;
+- `/api/v1/reviews` records human feedback for offline analysis without retaining images;
+- first-run fallback creates an explicitly marked untrained demo bundle when no promoted bundle is mounted;
+- Docker no longer downloads CLIP, runs prototype bootstrapping, or references a missing entrypoint;
+- README, environment variables, and Docker Compose now describe the IP102 runtime.
+
+The fallback demo model exists only so the API and UI can be opened and tested before a trained bundle is mounted. It does not carry a performance claim.
+
+### 23.2 Added files
+
+| Path | Responsibility |
+|---|---|
+| `src/pestscope/inference/config.py` | Runtime settings and environment variables |
+| `src/pestscope/inference/service.py` | Bundle loading, image validation, prediction, and decision gate |
+| `src/pestscope/inference/demo_model.py` | Explicitly marked fallback model for first-run smoke testing |
+| `src/pestscope/inference/examples.py` | Demo sample metadata, external image fetch, and fallback image rendering |
+| `src/pestscope/inference/reviews.py` | SQLite-backed offline review metadata |
+| `tests/api/test_pestscope_api.py` | API, review, and first-run fallback coverage |
+
+### 23.3 Removed legacy files
+
+The following files were removed after the new API path passed tests:
+
+| Path | Reason |
+|---|---|
+| `models/adaptive_service.py` | Online prototype learning was retired |
+| `models/config.py` | Old `VISION_*` settings were replaced by `PESTSCOPE_*` settings |
+| `models/demo_catalog.py` | Synthetic connector demo no longer matches the pest-recognition concept |
+| `models/__init__.py` | Legacy package has no remaining owner |
+| `eval/benchmark.py` | Few-shot prototype benchmark was replaced by manifest-based training/evaluation |
+| `eval/test_api.py` | Old `/v1/classes` and `/v1/predict` tests were replaced by versioned API tests |
+| `eval/test_service.py` | Prototype service behavior no longer belongs to the target system |
+| `eval/__init__.py` | Legacy evaluation package removed |
+
+### 23.4 Runtime workflow
+
+```mermaid
+sequenceDiagram
+    title Versioned PestScope inference
+    participant User
+    participant WebApp
+    participant API
+    participant Service
+    participant Bundle
+    participant ReviewDB
+
+    WebApp->>API: GET /api/v1/health/ready
+    API->>Service: Load or create demo bundle
+    Service->>Bundle: Verify metadata and weight hash
+    API-->>WebApp: Ready + model version
+    User->>WebApp: Select or upload image
+    WebApp->>API: POST /api/v1/predictions
+    API->>Service: Validate and score image
+    Service-->>API: Decision + top-k
+    API-->>WebApp: accepted / uncertain / unsupported
+    User->>WebApp: Optional correction
+    WebApp->>API: POST /api/v1/reviews
+    API->>ReviewDB: Store metadata only
+```
+
+### 23.5 Verification evidence
+
+| Check | Result |
+|---|---|
+| `python -m ruff check src\pestscope api.py scripts tests --no-cache` | Passed |
+| `python -m ruff format --check src\pestscope api.py scripts tests` | Passed |
+| `python -m pytest -q` | 12 passed |
+| `docker compose config --quiet` | Passed |
+| Direct FastAPI smoke with `PESTSCOPE_FETCH_DEMO_IMAGES=false` | `/ready` returned 200, `/model` returned `pestnet_s`, `/examples` returned 4 samples |
+| Local server smoke | `http://127.0.0.1:8000` served `/`, model metadata, examples, and sample prediction |
+
+`docker compose build` was attempted but Docker Desktop was not running on the machine. The CLI could not connect to `npipe:////./pipe/dockerDesktopLinuxEngine`. Manual deployment check: start Docker Desktop, then run `docker compose build` followed by `docker compose up`.
+
+### 23.6 Section 4 boundary
+
+Section 4 does not claim that the demo fallback is a trained model. It also does not tune thresholds, open the official test split, or package a promoted weight file into Git.
+
+Approval of this section authorizes **Section 5: evaluation, threshold calibration, and promoted bundle preparation**. The next section should run a real training experiment, evaluate validation behavior, choose thresholds from validation data, export `pestnet_s_latest`, and only then let the README discuss measured model quality.

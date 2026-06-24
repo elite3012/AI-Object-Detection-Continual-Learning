@@ -85,6 +85,7 @@ main { min-width: 0; padding: 30px clamp(20px, 3.5vw, 52px) 48px; }
 .eyebrow { margin: 0; color: var(--blue); font-size: 9px; font-weight: 850; }
 .readiness { margin-top: 7px; padding: 7px 10px; color: var(--amber); background: var(--amber-soft); border-radius: 4px; font-size: 11px; font-weight: 750; }
 .readiness.ready { color: var(--green); background: var(--green-soft); }
+.warning-band { margin: 0 0 16px; padding: 12px 14px; color: #854600; background: var(--amber-soft); border: 1px solid #ffd39b; border-radius: 6px; font-size: 11px; line-height: 1.5; }
 
 .workflow { min-height: 66px; display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 20px; padding: 0; list-style: none; background: #ffffff; border: 1px solid var(--line); border-radius: 6px; }
 .workflow li { position: relative; display: flex; align-items: center; gap: 11px; padding: 12px 18px; }
@@ -152,6 +153,7 @@ main { min-width: 0; padding: 30px clamp(20px, 3.5vw, 52px) 48px; }
 .outcome-indicator { width: 12px; height: 42px; border-radius: 3px; background: #a6b0b9; }
 .outcome-indicator.known { background: var(--green); }
 .outcome-indicator.unknown { background: var(--amber); }
+.outcome-indicator.uncertain { background: var(--blue); }
 .outcome-row div { display: grid; gap: 2px; min-width: 0; }
 .outcome-row small { color: var(--muted); font-size: 8px; font-weight: 850; }
 .outcome-row h3 { margin: 0; overflow-wrap: anywhere; font-size: 19px; }
@@ -165,9 +167,10 @@ main { min-width: 0; padding: 30px clamp(20px, 3.5vw, 52px) 48px; }
 .feedback-box { padding-top: 15px; border-top: 1px solid var(--line); }
 .feedback-box label { display: block; margin-bottom: 7px; font-size: 10px; font-weight: 750; }
 .feedback-box > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
-.feedback-box input, form input { min-width: 0; height: 38px; padding: 0 10px; color: var(--ink); background: #ffffff; border: 1px solid #b8c2cb; border-radius: 4px; outline: none; font-size: 11px; }
-.feedback-box input:focus, form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29, 95, 209, 0.1); }
+.feedback-box input, .feedback-box select, form input { min-width: 0; height: 38px; padding: 0 10px; color: var(--ink); background: #ffffff; border: 1px solid #b8c2cb; border-radius: 4px; outline: none; font-size: 11px; }
+.feedback-box input:focus, .feedback-box select:focus, form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29, 95, 209, 0.1); }
 .feedback-box small { display: block; margin-top: 7px; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.review-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 
 .classes-layout { display: grid; grid-template-columns: minmax(280px, 0.72fr) minmax(420px, 1.5fr); gap: 18px; }
 .teach-panel, .inventory-panel { min-height: 480px; }
@@ -186,6 +189,7 @@ main { min-width: 0; padding: 30px clamp(20px, 3.5vw, 52px) 48px; }
 .class-row small, .class-row > span:nth-child(3) { color: var(--muted); font-size: 9px; }
 .class-row button { width: 28px; height: 28px; color: #7d8995; background: transparent; border: 0; border-radius: 4px; font-size: 17px; }
 .class-row button:hover { color: var(--red); background: var(--red-soft); }
+.pest-class-row code { color: var(--muted); font-size: 10px; text-align: right; }
 .empty-state { min-height: 300px; display: grid; place-items: center; align-content: center; gap: 7px; text-align: center; }
 .empty-state p { margin: 0; color: var(--muted); font-size: 10px; }
 

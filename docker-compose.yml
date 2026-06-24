@@ -2,19 +2,21 @@ services:
   app:
     build:
       context: .
-      args:
-        VISION_MODEL_NAME: ${VISION_MODEL_NAME:-openai/clip-vit-base-patch32}
-    image: adaptive-vision-service:latest
+    image: pestscope-ip102:latest
     ports:
       - "8000:8000"
     environment:
-      VISION_MODEL_NAME: ${VISION_MODEL_NAME:-openai/clip-vit-base-patch32}
-      VISION_DEVICE: ${VISION_DEVICE:-auto}
-      VISION_STATE_PATH: /app/artifacts/prototypes.json
-      VISION_CONFIDENCE_THRESHOLD: ${VISION_CONFIDENCE_THRESHOLD:-0.90}
+      PESTSCOPE_DEVICE: ${PESTSCOPE_DEVICE:-cpu}
+      PESTSCOPE_MODEL_BUNDLE: /app/artifacts/models/pestnet_s_latest
+      PESTSCOPE_ACCEPT_THRESHOLD: ${PESTSCOPE_ACCEPT_THRESHOLD:-0.55}
+      PESTSCOPE_UNCERTAIN_THRESHOLD: ${PESTSCOPE_UNCERTAIN_THRESHOLD:-0.25}
+      PESTSCOPE_ALLOW_DEMO_MODEL: ${PESTSCOPE_ALLOW_DEMO_MODEL:-true}
+      PESTSCOPE_FETCH_DEMO_IMAGES: ${PESTSCOPE_FETCH_DEMO_IMAGES:-true}
+      PESTSCOPE_DEMO_CACHE_DIR: /app/artifacts/demo_assets
+      PESTSCOPE_REVIEW_DB: /app/artifacts/reviews.sqlite3
     volumes:
-      - prototype-data:/app/artifacts
+      - pestscope-artifacts:/app/artifacts
     restart: unless-stopped
 
 volumes:
-  prototype-data:
+  pestscope-artifacts:

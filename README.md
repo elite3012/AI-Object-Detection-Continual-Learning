@@ -1,170 +1,84 @@
-# Adaptive Vision Service
+# PestScope IP102
 
-An image classification service that can learn a new visual class from a small set of reference images. It uses a frozen CLIP image encoder and stores one incremental prototype per class, so adding a class does not require retraining or redeploying the backbone.
+PestScope is a small ML system for pest-image triage on a reviewed subset of IP102. The project is built around one idea: a classifier should be trained, evaluated, versioned, and allowed to say "uncertain" instead of forcing a confident label.
 
-The repository includes a FastAPI service, a responsive inspection workspace, persistent prototype memory, feedback updates, rolling unknown-rate metrics, a folder-based evaluation command, automated tests, and a single-container deployment.
+The main model is `PestNet-S`, a compact residual CNN trained from scratch. The app serves a versioned model bundle through FastAPI and shows top-k predictions, confidence, supported classes, and offline review capture.
 
-## How It Works
+## Current Scope
 
-1. Reference images are converted to normalized CLIP embeddings.
-2. The service maintains the sum and count of embeddings for each class.
-3. A query is compared with normalized class prototypes using cosine similarity.
-4. Predictions below the configured threshold are returned as unknown.
-5. Corrected samples can be submitted as feedback and update the prototype immediately.
+- 12 reviewed IP102 pest classes with scientific names and Vietnamese display names.
+- Manifest-based training from official IP102 splits.
+- Custom CNN and simple CNN baseline code.
+- Model bundle with weights, preprocessing, class map, metrics, and artifact hash.
+- FastAPI inference API and a browser workspace.
+- Docker runtime that starts even before a promoted model is mounted, using a clearly marked demo fallback.
 
-This design targets cases where labels evolve faster than a conventional training and deployment cycle, such as product catalogs, defect categories, internal assets, and field inspection workflows.
+IP102 is academic-use data. Images and training artifacts are not committed to this repository.
 
-```mermaid
-flowchart LR
-    A[Reference images] --> B[CLIP image encoder]
-    B --> C[Prototype memory]
-    D[Query image] --> B
-    B --> E[Cosine similarity]
-    C --> E
-    E --> F[Class or unknown]
-    F --> G[Human feedback]
-    G --> C
+## Run The App
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m uvicorn api:app --host 127.0.0.1 --port 8000
 ```
 
-## Run With Docker
+Open `http://127.0.0.1:8000`.
 
-```bash
+If `artifacts/models/pestnet_s_latest` does not exist, the API creates an untrained demo bundle so the UI and endpoints can be tested. Do not report demo fallback metrics as model performance.
+
+## Train A Smoke Bundle
+
+After Section 2 data artifacts exist:
+
+```powershell
+python scripts\train_pestnet.py `
+  --max-epochs 1 `
+  --limit-train-per-class 2 `
+  --limit-val-per-class 1 `
+  --device cpu `
+  --bundle-dir artifacts\models\pestnet_s_smoke
+```
+
+Train the configured experiment:
+
+```powershell
+python scripts\train_pestnet.py --config configs\train\pestnet_s.yaml --device cpu
+```
+
+The default output bundle is `artifacts/models/pestnet_s_latest`.
+
+## Docker
+
+```powershell
 docker compose up --build
 ```
 
+The container exposes:
+
 - Web app: `http://localhost:8000`
-- API documentation: `http://localhost:8000/docs`
-- Health endpoint: `http://localhost:8000/health`
+- OpenAPI: `http://localhost:8000/docs`
+- Readiness: `http://localhost:8000/api/v1/health/ready`
 
-The image build downloads the configured CLIP checkpoint and prepares three connector-inspection prototypes. When the container becomes healthy, the web app already has four fixtures and an initial prediction. Prototype updates persist in a named volume.
+Mount or copy a trained bundle into `/app/artifacts/models/pestnet_s_latest` for real inference. Without it, the container runs the marked demo fallback.
 
-## API Workflow
-
-Add reference images to a class:
-
-```bash
-curl -X POST "http://localhost:8000/v1/classes/damaged-connector/examples" \
-  -F "files=@samples/damaged-connector/01.jpg" \
-  -F "files=@samples/damaged-connector/02.jpg"
-```
-
-Classify an image:
-
-```bash
-curl -X POST "http://localhost:8000/v1/predict?top_k=3" \
-  -F "file=@samples/query.jpg"
-```
-
-Submit a corrected label:
-
-```bash
-curl -X POST "http://localhost:8000/v1/feedback/damaged-connector" \
-  -F "file=@samples/query.jpg"
-```
+## API
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/health` | Process and model state |
-| `GET` | `/v1/classes` | Class memory inventory |
-| `POST` | `/v1/classes/{label}/examples` | Add one or more reference images |
-| `DELETE` | `/v1/classes/{label}` | Remove a class prototype |
-| `POST` | `/v1/predict` | Return ranked matches or unknown |
-| `POST` | `/v1/feedback/{label}` | Apply a corrected sample |
-| `GET` | `/v1/metrics` | Rolling similarity and unknown-rate metrics |
+| `GET` | `/api/v1/health/live` | Process liveness |
+| `GET` | `/api/v1/health/ready` | Model readiness |
+| `GET` | `/api/v1/model` | Model card, class map, preprocessing |
+| `GET` | `/api/v1/examples` | Demo image metadata and attribution |
+| `POST` | `/api/v1/predictions` | Predict one uploaded image |
+| `POST` | `/api/v1/reviews` | Store offline human feedback |
 
-## Local Development
-
-Python 3.10 or newer is required.
+## Verification
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
-python -m uvicorn api:app --reload --port 8000
+python -m ruff check src\pestscope api.py scripts tests --no-cache
+python -m ruff format --check src\pestscope api.py scripts tests
+python -m pytest -q
+docker compose config --quiet
 ```
 
-For an offline UI/API smoke test without downloading CLIP:
-
-```powershell
-$env:VISION_ENCODER = "visual"
-$env:VISION_STATE_PATH = "artifacts/smoke-prototypes.json"
-python -m uvicorn api:app --reload --port 8000
-```
-
-Open `http://localhost:8000`. The `visual` encoder is a deterministic smoke-test fallback; Docker and normal local runs use CLIP.
-
-Runtime settings can be copied from `.env.example` or supplied by the deployment environment.
-
-| Variable | Default | Description |
-|---|---|---|
-| `VISION_MODEL_NAME` | `openai/clip-vit-base-patch32` | Hugging Face checkpoint |
-| `VISION_ENCODER` | `clip` | `clip` for production or `visual` for offline smoke tests |
-| `VISION_DEVICE` | `auto` | `auto`, `cpu`, or `cuda` |
-| `VISION_STATE_PATH` | `artifacts/prototypes.json` | Persistent prototype snapshot |
-| `VISION_CONFIDENCE_THRESHOLD` | `0.90` | Minimum top similarity for a known result |
-| `VISION_DRIFT_WINDOW_SIZE` | `500` | Number of predictions retained in memory |
-| `VISION_MAX_UPLOAD_MB` | `10` | Per-file upload limit |
-
-## Evaluation
-
-The evaluator expects one directory per class. It selects a deterministic support set, teaches every class, evaluates the remaining images, and writes configuration plus aggregate and per-class results to JSON.
-
-```text
-dataset/
-  class-a/
-    001.jpg
-    002.jpg
-  class-b/
-    001.jpg
-    002.jpg
-```
-
-```bash
-python -m eval.benchmark dataset --support-per-class 5 --output benchmark-results.json
-```
-
-Do not treat the demo's `0.90` threshold as universal. Calibrate it on validation data from the target domain and inspect both accuracy and unknown rate.
-
-## Tests
-
-```bash
-python -m pytest
-python -m ruff check .
-```
-
-The tests use a deterministic color embedder instead of downloading CLIP. They cover incremental prototype updates, persistence, dimension validation, known and unknown predictions, feedback, multipart uploads, demo bootstrap, bundled images, and the web entry point.
-
-## Project Layout
-
-```text
-api.py                         FastAPI application, demo lifecycle, and web routes
-index.html                     Inspection workspace and concise in-app guidance
-app.js                         API client and interaction state
-styles.css                     Responsive operational UI
-bootstrap_demo.py              Build-time prototype preparation
-models/
-  adaptive_service.py          Application workflow and decision threshold
-  embeddings.py                Lazy CLIP adapter
-  prototype_memory.py          Incremental prototypes and JSON persistence
-  drift.py                     Rolling operational metrics
-  config.py                    Environment configuration
-  demo_catalog.py              Deterministic connector inspection fixtures
-  visual_embeddings.py         Offline smoke-test encoder
-eval/
-  benchmark.py                 Folder-based few-shot evaluation
-  test_*.py                    Unit and API tests
-Dockerfile                     Model-preloaded application image
-docker-compose.yml             Single-service deployment with persistent state
-```
-
-## Boundaries
-
-- Prototype JSON is appropriate for a single API replica. Multiple writers require a transactional store or vector database.
-- Drift metrics are process-local and reset on restart. Export them to an observability backend for production use.
-- Prototype classification works best when class appearance is coherent. Fine-grained domains may require a trained metric head or supervised fine-tuning.
-- The service does not retain uploaded source images. Only aggregate embedding sums and counts are persisted.
-- Built-in fixtures are a functional smoke test, not an accuracy benchmark. Use the evaluation command with domain data for reported metrics.
-
-## License
-
-No license is currently included. Add one before redistributing the project or its code.
+The detailed design and section gates are tracked in `DESIGN_REPORT_IP102.md`.
