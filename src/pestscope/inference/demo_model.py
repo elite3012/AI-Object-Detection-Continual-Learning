@@ -53,6 +53,10 @@ def ensure_demo_bundle(
             "mean": list(DEFAULT_MEAN),
             "std": list(DEFAULT_STD),
         },
+        "thresholds": {
+            "accepted": 0.55,
+            "uncertain": 0.25,
+        },
         "classes": [
             {"index": index, **reviewed[class_id].to_dict()}
             for index, class_id in enumerate(selected_ids)
