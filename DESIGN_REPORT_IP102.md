@@ -1,7 +1,7 @@
 # IP102 Pest Recognition System
 
 > Design report for review  
-> Status: **Implementation in progress - Sections 1, 2, 3, and 4 completed**
+> Status: **Implementation in progress - Sections 1 through 6 completed**
 > Purpose: agree on the ML problem, system boundaries, workflow, deployment, and acceptance gates before changing the codebase.
 
 ## 1. Executive summary
@@ -1208,3 +1208,199 @@ sequenceDiagram
 Section 4 does not claim that the demo fallback is a trained model. It also does not tune thresholds, open the official test split, or package a promoted weight file into Git.
 
 Approval of this section authorizes **Section 5: evaluation, threshold calibration, and promoted bundle preparation**. The next section should run a real training experiment, evaluate validation behavior, choose thresholds from validation data, export `pestnet_s_latest`, and only then let the README discuss measured model quality.
+
+## 24. Section 5 evaluation and threshold calibration
+
+> Implementation completed on 2026-06-24.
+> Scope: validation-set scoring, near-OOD threshold calibration, metadata update, and local trained-bundle preparation.
+> Result: **full validation calibration passed and thresholds were written into the trained bundle**.
+
+### 24.1 Implemented scope
+
+Section 5 adds the measurement path that decides whether a model is safe to accept predictions:
+
+- `scripts/evaluate_pestnet_bundle.py` scores a bundle against manifest-backed validation records;
+- selected IP102 validation classes are treated as in-distribution;
+- validation records from non-selected IP102 classes are used as near-OOD evidence;
+- the official test split is blocked from writing thresholds;
+- thresholds are written into `metadata.json` only when requested;
+- the API now uses bundle thresholds by default, with environment variables as explicit overrides;
+- `/api/v1/model` exposes calibration metadata for the currently loaded bundle;
+- unit tests cover threshold selection and runtime loading of bundle thresholds.
+
+### 24.2 Calibration policy
+
+The calibrator tries to find the lowest-risk acceptance threshold from validation data. If no candidate threshold reaches the target accepted precision and minimum coverage, it switches to conservative mode:
+
+- `accepted` is set above the observed validation confidence;
+- `uncertain` is selected below that boundary using near-OOD confidence evidence;
+- the API will mostly return `uncertain` or `unsupported` instead of pretending the model is ready.
+
+That behavior is intentional. A weak model should fail safely and visibly.
+
+### 24.3 Local trained run
+
+A full 12-class local bundle was trained on the reviewed subset:
+
+```powershell
+python scripts\train_pestnet.py `
+  --device cuda `
+  --progress `
+  --bundle-dir artifacts\models\pestnet_s_latest
+```
+
+The actual run used CUDA on the available RTX 3070 Ti Laptop GPU and completed all 18 configured epochs. It produced run `20260624T111853Z` with model SHA-256 `93a7e1af22236d417dfd0c1c9b674582efefd466a300f0bbc7101a0f55172696`.
+
+It was then calibrated with:
+
+```powershell
+python scripts\evaluate_pestnet_bundle.py `
+  --bundle-dir artifacts\models\pestnet_s_latest `
+  --split val `
+  --device cuda `
+  --batch-size 64 `
+  --write-thresholds `
+  --output artifacts\evaluation\pestnet_s_latest_eval.json
+```
+
+### 24.4 Validation evidence
+
+| Measure | Result |
+|---|---:|
+| Train / validation records | 5,322 / 883 |
+| Near-OOD validation samples scored | 6,625 |
+| Best epoch | 18 |
+| Top-1 accuracy | 0.5085 |
+| Top-3 accuracy | 0.7871 |
+| Macro-F1 | 0.5048 |
+| Balanced accuracy | 0.5508 |
+| Accepted threshold | 0.4974 |
+| Uncertain threshold | 0.4725 |
+| Accepted precision | 0.7011 |
+| Accepted coverage | 0.4926 |
+| Near-OOD accepted rate | 0.2875 |
+| Near-OOD unsupported rate | 0.6774 |
+| Precision target met | Yes |
+
+This is now a credible local candidate for the demo path, not merely a smoke artifact. It is still not a final scientific result because baseline comparison, ablation, external-image evaluation, and the official test split remain closed.
+
+### 24.5 Verification evidence
+
+| Check | Result |
+|---|---|
+| `python -m ruff check src\pestscope api.py scripts tests --no-cache` | Passed |
+| `python -m ruff format --check src\pestscope api.py scripts tests` | Passed |
+| `python -m pytest -q` | 15 passed |
+| `docker compose config --quiet` | Passed |
+| Calibration on real IP102 validation records | Passed and wrote thresholds |
+| Local API smoke | Loaded bundle `20260624T111853Z`, `demo_model=false`, thresholds `0.4974 / 0.4725` |
+
+### 24.6 Section 5 boundary
+
+Section 5 does not open the official test split or claim final model quality. It prepares the evaluation machinery and a calibrated local candidate bundle. The next section should run baseline comparison, ablation, external-image evaluation, then final test-set evaluation once the model and thresholds are frozen.
+
+## 25. Section 6 baseline comparison, ablation, and external benchmark
+
+> Implementation completed on 2026-06-27.
+> Scope: model variants, comparison runner, external licensed-image benchmark, checkpoint-safe training, bundled demo examples, and documentation update.
+> Result: **PestNet-S outperformed the simple baseline and the no-attention ablation on validation macro-F1 while preserving calibrated uncertainty behavior**.
+
+### 25.1 Implemented scope
+
+Section 6 turns the model claim into a measurable comparison:
+
+- `PestNet-S` now has explicit ablation switches for channel attention and residual connections;
+- `simple_cnn` is available as a small baseline architecture;
+- training can override batch size and worker count from the CLI;
+- each improved validation checkpoint writes `best_model.pt`, `history.csv`, and `metrics.json` inside the run folder;
+- `configs/experiments/section6.yaml` defines the comparison suite;
+- `scripts/compare_model_runs.py` writes JSON and Markdown comparison artifacts;
+- `scripts/build_external_benchmark.py` downloads and normalizes licensed external images;
+- `scripts/evaluate_external_benchmark.py` runs the promoted bundle against that manifest through the real inference service;
+- the web demo now prefers bundled real example images before network fetch or generated fallback.
+
+### 25.2 Model variants
+
+The comparison includes three practical levels of model complexity:
+
+| Variant | Purpose |
+|---|---|
+| `simple_cnn` | Small baseline to show what a shallow CNN can learn from the same data |
+| `pestnet_s_no_attention` | Ablation to test whether the channel-attention block earns its place |
+| `pestnet_s` | Promoted residual CNN with channel attention |
+
+The ablation is not perfectly equal-budget: the promoted `pestnet_s` run completed 18 epochs, while the Section 6 baseline and no-attention runs completed 12 epochs to keep iteration time reasonable. The result is still useful for project positioning, but a final paper-style comparison should retrain all variants under the same epoch and batch-size budget.
+
+### 25.3 Validation comparison
+
+Command:
+
+```powershell
+python scripts\compare_model_runs.py --suite configs\experiments\section6.yaml
+```
+
+Result:
+
+| Model | Params | Epochs | Top-1 | Top-3 | Macro-F1 | Accepted precision | Accepted coverage | Near-OOD accepted |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `pestnet_s` | 2,812,908 | 18 | 0.5085 | 0.7871 | 0.5048 | 0.7011 | 0.4926 | 0.2875 |
+| `pestnet_s_no_attention` | 2,779,564 | 12 | 0.4541 | 0.6818 | 0.4402 | 0.7000 | 0.3851 | 0.2759 |
+| `simple_cnn` | 95,020 | 12 | 0.3556 | 0.6093 | 0.3435 | 0.7000 | 0.1246 | 0.1097 |
+
+The useful signal is not only higher top-1 accuracy. `PestNet-S` also keeps more predictions in the accepted path after calibration. That matters for an application because a model that reaches precision only by rejecting nearly everything is not very useful.
+
+### 25.4 External-image smoke benchmark
+
+Commands:
+
+```powershell
+python scripts\build_external_benchmark.py
+python scripts\evaluate_external_benchmark.py --bundle-dir artifacts\models\pestnet_s_latest --device cuda
+```
+
+Result on the successfully downloaded licensed images:
+
+| Measure | Result |
+|---|---:|
+| External records evaluated | 7 |
+| Top-1 accuracy | 0.4286 |
+| Top-3 accuracy | 0.8571 |
+| Accepted predictions | 4 |
+| Accepted precision | 0.7500 |
+| Unsupported rate | 0.4286 |
+
+This is a smoke benchmark, not a scientific external test set. It is intentionally small and visible. Its value is that it catches a common demo failure: a model that looks acceptable on validation but collapses on ordinary web images. The current result is useful rather than flattering: most top-3 matches remained plausible, but one external image was accepted with the wrong class. That is exactly the kind of failure this benchmark is meant to expose before a model card overstates readiness.
+
+During repeated runs, Wikimedia returned `429` for several direct image requests. The builder now reuses already-normalized cached images and records failures in `manifest.json` instead of inventing replacements. That keeps the benchmark honest.
+
+### 25.5 First-run demo behavior
+
+Four real, licensed sample images are bundled under `assets/demo_examples` and documented in `assets/demo_examples/ATTRIBUTION.md`. The sample-image order is:
+
+1. bundled local example;
+2. cached or fetched external example;
+3. generated fallback image if the network is unavailable.
+
+The app still returns a prediction when no promoted model bundle exists, but that path is marked as `demo_model=true`. Real model evidence must come from `artifacts/models/pestnet_s_latest`.
+
+### 25.6 Verification evidence
+
+| Check | Result |
+|---|---|
+| `python -m ruff check src\pestscope api.py scripts tests --no-cache` | Passed |
+| `python -m ruff format --check src\pestscope api.py scripts tests` | Passed |
+| `python -m pytest -q` | 17 passed |
+| `docker compose config --quiet` | Passed |
+| SimpleCNN training | Completed 12 epochs on CUDA, exported `artifacts\models\simple_cnn_latest` |
+| No-attention ablation training | Completed 12 epochs on CUDA, exported `artifacts\models\pestnet_s_no_attention_latest` |
+| Full PestNet-S validation comparison | Passed and wrote `artifacts\evaluation\section6_model_comparison.json` |
+| External benchmark build | Completed with 7 cached/downloaded images and 5 recorded download failures |
+| External benchmark evaluation | Passed through the real inference service |
+| Local API smoke | Loaded bundle `20260624T111853Z`, `demo_model=false`, returned 4 bundled JPEG examples |
+| `docker compose build` | Blocked because Docker Desktop daemon was not running: `dockerDesktopLinuxEngine` pipe missing |
+
+### 25.7 Section 6 boundary
+
+Section 6 still does not open the official test split. It also does not claim that IP102 alone proves field readiness in Vietnam. The stronger project claim is now narrower and more defensible: this repository shows a reproducible from-scratch CNN pipeline, calibrated uncertainty, model comparison, and a small external-domain sanity check for a pest-recognition use case.
+
+The next section should focus on deployment hardening: final Docker build verification, release packaging for the trained model bundle, and a short model card that separates validation evidence from external smoke-test evidence.
