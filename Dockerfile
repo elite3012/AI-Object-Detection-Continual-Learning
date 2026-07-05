@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.title="PestScope IP102" \
-    org.opencontainers.image.description="FastAPI web app for a custom CNN crop-pest classifier"
+LABEL org.opencontainers.image.title="PestScope Field Lab" \
+    org.opencontainers.image.description="Dockerized crop-pest CNN workspace with inspection, evidence, and reproducible evaluation"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

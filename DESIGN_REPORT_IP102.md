@@ -1,4 +1,4 @@
-# IP102 Pest Recognition System
+# PestScope Field Lab
 
 > Design report for review  
 > Status: **Implementation in progress - Sections 1 through 6 completed**

@@ -1,9 +1,9 @@
-# PestScope IP102
+# PestScope Field Lab
 
-PestScope is a crop-pest image triage app built around a custom CNN trained from
-scratch on a reviewed IP102 subset. The goal is not to force a label for every
-image. The app shows top-k predictions, confidence gates, model evidence, failure
-cases, and enough reproducibility detail to rerun the experiment.
+PestScope Field Lab is a crop-pest classification workspace for testing how a
+small CNN behaves on real agricultural images. It combines field-style
+inspection, confidence gating, training evidence, failure analysis, and
+reproducible experiment commands in one Dockerized app.
 
 The current public repo keeps source code, configs, tests, Docker setup, and UI
 screenshots. IP102 images and large model artifacts stay outside Git.
