@@ -2,21 +2,30 @@ services:
   app:
     build:
       context: .
+      dockerfile: Dockerfile
     image: pestscope-ip102:latest
+    init: true
     ports:
-      - "8000:8000"
+      - "${PESTSCOPE_PORT:-8000}:8000"
     environment:
       PESTSCOPE_DEVICE: ${PESTSCOPE_DEVICE:-cpu}
       PESTSCOPE_MODEL_BUNDLE: /app/artifacts/models/pestnet_s_latest
-      PESTSCOPE_ACCEPT_THRESHOLD: ${PESTSCOPE_ACCEPT_THRESHOLD:-0.55}
-      PESTSCOPE_UNCERTAIN_THRESHOLD: ${PESTSCOPE_UNCERTAIN_THRESHOLD:-0.25}
+      PESTSCOPE_CLASS_REVIEW: /app/configs/data/ip102_class_review.yaml
+      PESTSCOPE_MAX_UPLOAD_MB: ${PESTSCOPE_MAX_UPLOAD_MB:-10}
+      PESTSCOPE_MAX_PIXELS: ${PESTSCOPE_MAX_PIXELS:-16000000}
+      PESTSCOPE_ACCEPT_THRESHOLD: ${PESTSCOPE_ACCEPT_THRESHOLD:-}
+      PESTSCOPE_UNCERTAIN_THRESHOLD: ${PESTSCOPE_UNCERTAIN_THRESHOLD:-}
       PESTSCOPE_ALLOW_DEMO_MODEL: ${PESTSCOPE_ALLOW_DEMO_MODEL:-true}
-      PESTSCOPE_FETCH_DEMO_IMAGES: ${PESTSCOPE_FETCH_DEMO_IMAGES:-true}
+      PESTSCOPE_FETCH_DEMO_IMAGES: ${PESTSCOPE_FETCH_DEMO_IMAGES:-false}
       PESTSCOPE_DEMO_CACHE_DIR: /app/artifacts/demo_assets
+      PESTSCOPE_DEMO_MANIFEST: /app/artifacts/data/ip102_manifest.csv
       PESTSCOPE_REVIEW_DB: /app/artifacts/reviews.sqlite3
     volumes:
-      - pestscope-artifacts:/app/artifacts
+      - ./artifacts:/app/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/v1/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
-
-volumes:
-  pestscope-artifacts:

@@ -8,6 +8,12 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+node_modules/
+npm-debug.log*
+*.log
 
 artifacts/
 /data/

@@ -1,10 +1,19 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.title="PestScope IP102" \
+    org.opencontainers.image.description="FastAPI web app for a custom CNN crop-pest classifier"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src \
     PESTSCOPE_DEVICE=cpu \
     PESTSCOPE_MODEL_BUNDLE=/app/artifacts/models/pestnet_s_latest \
+    PESTSCOPE_CLASS_REVIEW=/app/configs/data/ip102_class_review.yaml \
+    PESTSCOPE_MAX_UPLOAD_MB=10 \
+    PESTSCOPE_MAX_PIXELS=16000000 \
+    PESTSCOPE_ALLOW_DEMO_MODEL=true \
+    PESTSCOPE_FETCH_DEMO_IMAGES=false \
     PESTSCOPE_DEMO_CACHE_DIR=/app/artifacts/demo_assets \
     PESTSCOPE_REVIEW_DB=/app/artifacts/reviews.sqlite3
 
@@ -23,7 +32,7 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 
 COPY --chown=appuser:appuser . .
 
-RUN mkdir -p /app/artifacts/models /app/artifacts/demo_assets \
+RUN mkdir -p /app/artifacts/models /app/artifacts/demo_assets /app/artifacts/data \
     && chown -R appuser:appuser /app/artifacts
 
 USER appuser
