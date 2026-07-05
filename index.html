@@ -1,32 +1,46 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="PestScope nhận diện sâu hại IP102 bằng CNN tự huấn luyện và model bundle có version."
+      content="PestScope identifies agricultural pests from field images using a versioned CNN model bundle."
     />
-    <title>PestScope | IP102 Pest Recognition</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>PestScope | Crop Pest Scout</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23102b22'/%3E%3Ccircle cx='32' cy='32' r='17' fill='none' stroke='%23f0ba42' stroke-width='5'/%3E%3Cpath d='M16 43 48 21M22 20l20 24' stroke='%23fbfdf9' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/styles.css?v=20260704-audit-dock" />
   </head>
   <body>
     <div id="setup-screen" class="setup-screen" aria-live="polite">
       <div class="setup-box">
-        <div class="setup-mark" aria-hidden="true"></div>
+        <div class="setup-mark" aria-hidden="true"><i></i></div>
         <p class="eyebrow">PESTSCOPE</p>
-        <h1>Đang mở model bundle</h1>
-        <p id="setup-message">Kiểm tra API và model...</p>
+        <h1>Opening model bundle</h1>
+        <p id="setup-message">Checking API and model readiness...</p>
         <div class="progress-track"><span></span></div>
-        <small>Không cần teach trong app. Model được train offline và nạp theo version.</small>
+        <small>No in-app teaching step. The CNN is trained offline and loaded as a versioned bundle.</small>
       </div>
     </div>
 
     <div id="app" class="app" hidden>
+      <div class="visual-backdrop" aria-hidden="true">
+        <div class="visual-field-map" data-parallax-depth="0.05"></div>
+        <div class="visual-leaf-field" data-parallax-depth="0.10"></div>
+        <div class="visual-specimen-rail" data-parallax-depth="0.16">
+          <span class="visual-specimen visual-specimen-a"></span>
+          <span class="visual-specimen visual-specimen-b"></span>
+          <span class="visual-specimen visual-specimen-c"></span>
+        </div>
+        <div class="visual-scan-beam" data-parallax-depth="0.22"></div>
+      </div>
       <header class="topbar">
         <a class="brand" href="#inspect" aria-label="PestScope workspace">
           <span class="brand-mark" aria-hidden="true"><i></i></span>
-          <span><strong>PestScope</strong><small>IP102 CNN triage</small></span>
+          <span><strong>PestScope</strong><small>IP102 pest classifier</small></span>
         </a>
         <div class="topbar-actions">
           <span id="model-name" class="model-name">model bundle</span>
@@ -39,14 +53,14 @@
         <aside class="sidebar">
           <nav aria-label="Workspace navigation">
             <button class="nav-item active" data-view="inspect">Inspect</button>
-            <button class="nav-item" data-view="classes">Classes</button>
-            <button class="nav-item" data-view="evidence">Evidence</button>
-            <button class="nav-item" data-view="api">API</button>
+            <button class="nav-item" data-view="classes">Species</button>
+            <button class="nav-item" data-view="experiments">Evidence</button>
+            <button class="nav-item" data-view="lab">Model</button>
           </nav>
           <div class="sidebar-note">
-            <span>SUPPORTED</span>
+            <span>SUPPORTED SCOPE</span>
             <strong id="sidebar-class-count">0 classes</strong>
-            <small>Class set được khóa theo model version.</small>
+            <small>Predictions are limited to this model bundle.</small>
           </div>
         </aside>
 
@@ -54,32 +68,28 @@
           <section class="page active" data-page="inspect">
             <div class="page-heading">
               <div>
-                <p class="eyebrow">FIELD IMAGE TRIAGE</p>
-                <h1>Nhận diện sâu hại từ ảnh.</h1>
-                <p>Chọn ảnh mẫu hoặc upload ảnh của bạn để xem top-k và trạng thái uncertainty.</p>
+                <p class="eyebrow">IMAGE CLASSIFICATION</p>
+                <h1>Classify crop-pest images.</h1>
+                <p>Use a sample or upload an image. The app returns class scores and a threshold-based decision.</p>
               </div>
               <span id="demo-ready" class="readiness">Checking</span>
             </div>
-
-            <ol class="workflow" aria-label="Three-step recognition guide">
-              <li><span>1</span><div><strong>Chọn ảnh</strong><small>Sample hoặc upload</small></div></li>
-              <li><span>2</span><div><strong>Dự đoán</strong><small>Top-k + confidence</small></div></li>
-              <li><span>3</span><div><strong>Review</strong><small>Lưu feedback offline</small></div></li>
-            </ol>
 
             <div id="demo-warning" class="warning-band" hidden></div>
 
             <div class="inspection-grid">
               <section class="sample-panel" aria-labelledby="sample-heading">
                 <div class="panel-heading">
-                  <div><span>LICENSED EXAMPLES</span><h2 id="sample-heading">Ảnh mẫu</h2></div>
+                  <div><span>EXAMPLES</span><h2 id="sample-heading">Test images</h2></div>
+                  <button id="run-audit" class="button secondary compact" type="button">Run audit</button>
                 </div>
                 <div id="sample-list" class="sample-list"></div>
+                <div id="sample-audit" class="sample-audit" hidden></div>
               </section>
 
               <section class="viewer-panel" aria-labelledby="viewer-heading">
                 <div class="panel-heading">
-                  <div><span>INPUT</span><h2 id="viewer-heading">Ảnh đang kiểm tra</h2></div>
+                  <div><span>INPUT</span><h2 id="viewer-heading">Input image</h2></div>
                   <span id="input-source" class="source-chip">Sample</span>
                 </div>
                 <div class="image-stage">
@@ -92,8 +102,8 @@
                 </div>
                 <div class="upload-row">
                   <label class="upload-control" for="image-upload">
-                    <strong>Upload ảnh</strong>
-                    <small>PNG, JPG hoặc WebP tối đa 10 MB</small>
+                    <strong>Upload image</strong>
+                    <small>PNG, JPG, or WebP up to 10 MB</small>
                     <input id="image-upload" type="file" accept="image/png,image/jpeg,image/webp" />
                   </label>
                   <button id="predict-upload" class="button primary" disabled>Predict</button>
@@ -102,13 +112,13 @@
 
               <section class="result-panel" aria-labelledby="result-heading">
                 <div class="panel-heading">
-                  <div><span>DECISION</span><h2 id="result-heading">Kết quả</h2></div>
+                  <div><span>OUTPUT</span><h2 id="result-heading">Model output</h2></div>
                   <span id="result-latency" class="source-chip">Ready</span>
                 </div>
                 <div id="result-empty" class="result-empty">
                   <div class="result-placeholder"></div>
-                  <strong>Chọn một ảnh để bắt đầu</strong>
-                  <p>Model sẽ trả về trạng thái accepted, uncertain hoặc unsupported.</p>
+                  <strong>Select an image to begin</strong>
+                  <p>The model will return accepted, uncertain, or unsupported.</p>
                 </div>
                 <div id="result-content" hidden>
                   <div class="outcome-row">
@@ -117,14 +127,34 @@
                   </div>
                   <div id="match-list" class="match-list"></div>
                   <p id="threshold-note" class="threshold-note"></p>
+                  <div class="confidence-gate">
+                    <div class="gate-head">
+                      <span>CONFIDENCE GATE</span>
+                      <strong id="gate-current">0.0%</strong>
+                    </div>
+                    <div class="gate-track">
+                      <i id="gate-current-marker" class="gate-current-marker"></i>
+                      <span id="gate-uncertain-marker" class="gate-threshold uncertain"></span>
+                      <span id="gate-accepted-marker" class="gate-threshold accepted"></span>
+                    </div>
+                    <div class="gate-labels">
+                      <span>Unsupported</span>
+                      <span id="gate-uncertain-label">Uncertain</span>
+                      <span id="gate-accepted-label">Accepted</span>
+                    </div>
+                  </div>
+                  <div class="report-actions">
+                    <button id="copy-report" class="button secondary" type="button">Copy result note</button>
+                    <button id="download-report" class="button secondary" type="button">Download JSON</button>
+                  </div>
                   <div class="feedback-box">
-                    <label for="correction-class">Feedback sau khi kiểm tra</label>
+                    <label for="correction-class">Post-check feedback</label>
                     <div class="review-grid">
                       <select id="correction-class"></select>
-                      <input id="review-note" placeholder="Ghi chú ngắn nếu cần" />
+                      <input id="review-note" placeholder="Short note if needed" />
                       <button id="submit-review" class="button secondary">Save review</button>
                     </div>
-                    <small>Feedback chỉ lưu để phân tích offline, không sửa model đang chạy.</small>
+                    <small>Feedback is stored for offline analysis and never updates the running model.</small>
                   </div>
                 </div>
               </section>
@@ -135,53 +165,64 @@
             <div class="page-heading">
               <div>
                 <p class="eyebrow">SUPPORTED SCOPE</p>
-                <h1>12 class đã review.</h1>
-                <p>Tên dataset được giữ để trace, tên khoa học và tên Việt dùng cho output.</p>
+                <h1>Supported pest classes.</h1>
+                <p>Review the classes included in this bundle, their sample images, and current validation scores.</p>
               </div>
             </div>
-            <section class="inventory-panel">
-              <div class="panel-heading"><div><span>MODEL CLASS MAP</span><h2>Danh sách class</h2></div></div>
-              <div id="class-list" class="class-list"></div>
-            </section>
+            <div class="species-dashboard">
+              <section class="inventory-panel species-gallery-panel">
+                <div class="panel-heading"><div><span>MODEL CLASS MAP</span><h2>Supported species</h2></div></div>
+                <div id="class-list" class="class-list"></div>
+              </section>
+              <section class="species-performance-panel">
+                <div class="panel-heading"><div><span>VALIDATION</span><h2>Class performance</h2></div></div>
+                <div id="per-class-metrics" class="per-class-metrics"></div>
+              </section>
+              <section class="species-action-panel">
+                <div class="panel-heading"><div><span>NEXT TRAINING PASS</span><h2>Simple improvement plan</h2></div></div>
+                <div id="optimization-lab" class="optimization-lab"></div>
+              </section>
+            </div>
           </section>
 
-          <section class="page" data-page="evidence">
+          <section class="page" data-page="lab">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">MODEL DETAILS</p>
+                <h1>CNN layer outputs.</h1>
+                <p>Review tensor shapes and activation maps from the current PestNet-S model bundle.</p>
+              </div>
+            </div>
+            <div class="lab-grid lab-grid-workbench">
+              <section class="architecture-panel">
+                <div class="panel-heading">
+                  <div><span>CNN FORWARD PASS</span><h2>Layer outputs</h2></div>
+                </div>
+                <div id="layer-flow" class="layer-flow" aria-label="PestNet-S layer outputs"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="page" data-page="experiments">
             <div class="page-heading">
               <div>
                 <p class="eyebrow">MODEL EVIDENCE</p>
-                <h1>Bundle có metadata.</h1>
-                <p>App đọc model, preprocessing, class map và threshold từ cùng một boundary.</p>
+                <h1>Trust and training evidence.</h1>
+                <p>Use the quick checks, inspect failures, then rerun the experiment when needed.</p>
               </div>
             </div>
-            <div id="metric-grid" class="metric-grid"></div>
-            <section class="signal-detail">
-              <div>
-                <span>DECISION POLICY</span>
-                <h2>Không ép nhãn khi thiếu tự tin</h2>
-                <p>Softmax confidence đi qua hai ngưỡng: accepted, uncertain, rồi unsupported.</p>
+            <section class="experiment-panel">
+              <div class="panel-heading">
+                <div><span>MODEL CARD + RUN LOG</span><h2>Current bundle</h2></div>
               </div>
-              <div class="policy-flow">
-                <span>Image</span><i></i><span>CNN logits</span><i></i><span>Confidence gate</span><i></i><span>Decision</span>
-              </div>
+              <div id="experiment-evidence" class="experiment-evidence"></div>
             </section>
-          </section>
-
-          <section class="page" data-page="api">
-            <div class="page-heading">
-              <div>
-                <p class="eyebrow">INTEGRATION</p>
-                <h1>API cùng đường với UI.</h1>
-                <p>Không có model path riêng cho demo.</p>
-              </div>
-              <a class="button primary" href="/docs" target="_blank" rel="noreferrer">OpenAPI</a>
-            </div>
-            <div id="endpoint-list" class="endpoint-list"></div>
           </section>
         </main>
       </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js" defer></script>
+    <script src="/app.js?v=20260704-audit-dock" defer></script>
   </body>
 </html>
