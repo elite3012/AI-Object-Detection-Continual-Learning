@@ -738,9 +738,12 @@ def create_app(
 ) -> FastAPI:
     settings = settings or InferenceSettings.from_env()
     app = FastAPI(
-        title="PestScope IP102",
+        title="PestScope Field Lab",
         version="0.2.0",
-        description="IP102 pest-image triage API backed by a versioned CNN model bundle.",
+        description=(
+            "Crop-pest CNN workspace API with inspection, training evidence, "
+            "failure analysis, and reproducible evaluation."
+        ),
     )
     app.state.service = service
     app.state.settings = settings

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pestscope-ip102:latest
+    image: pestscope-field-lab:latest
     init: true
     ports:
       - "${PESTSCOPE_PORT:-8000}:8000"
