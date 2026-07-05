@@ -59,13 +59,13 @@ to show the full ML workflow end to end.
 
 ```mermaid
 flowchart LR
-    user["User"] --> web["Web UI<br/>index.html + app.js + styles.css"]
-    web --> api["FastAPI app<br/>api.py"]
+    user["User"] --> web["Web UI"]
+    web --> api["FastAPI app"]
     api --> service["InferenceService"]
-    service --> bundle["Model bundle<br/>artifacts/models/pestnet_s_latest"]
-    bundle --> model["PestNet-S<br/>model.pt + metadata.json + metrics.json"]
-    api --> reviews["Review SQLite<br/>artifacts/reviews.sqlite3"]
-    api --> examples["Demo/example image loader"]
+    service --> bundle["Model bundle"]
+    bundle --> model["Weights + metadata"]
+    api --> reviews["Review SQLite"]
+    api --> examples["Example loader"]
     web --> evidence["Evidence and Model Lab views"]
     evidence --> api
 ```
@@ -152,16 +152,16 @@ Baselines and ablations:
 
 ```mermaid
 flowchart TD
-    raw["IP102 archive<br/>local only"] --> manifest["build_ip102_manifests.py"]
-    manifest --> csv["artifacts/data/ip102_manifest.csv"]
-    csv --> train["train_pestnet.py"]
-    config["configs/train/pestnet_s.yaml"] --> train
-    train --> run["artifacts/runs/pestnet_s/{run_id}"]
-    train --> bundle["artifacts/models/pestnet_s_latest"]
-    bundle --> eval["evaluate_pestnet_bundle.py"]
+    raw["IP102 archive<br/>local only"] --> manifest["Build manifest"]
+    manifest --> csv["Manifest CSV"]
+    csv --> train["Train CNN"]
+    config["Train config"] --> train
+    train --> run["Run folder"]
+    train --> bundle["Model bundle"]
+    bundle --> eval["Validate bundle"]
     csv --> eval
-    eval --> thresholds["Validation thresholds<br/>written to bundle metadata"]
-    bundle --> external["evaluate_external_benchmark.py"]
+    eval --> thresholds["Write thresholds"]
+    bundle --> external["External check"]
     external --> report["External smoke report"]
 ```
 
@@ -235,10 +235,10 @@ images with too many pixels.
 flowchart LR
     compose["docker compose up --build"] --> image["Python 3.11 slim image"]
     image --> app["uvicorn api:app"]
-    app --> mount["./artifacts mounted to /app/artifacts"]
+    app --> mount["Artifact mount"]
     mount --> real["Real bundle if metadata.json exists"]
     mount --> demo["Demo fallback if bundle is missing"]
-    app --> health["/api/v1/health/ready healthcheck"]
+    app --> health["Ready healthcheck"]
 ```
 
 Docker choices:
