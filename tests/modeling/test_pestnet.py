@@ -17,3 +17,9 @@ def test_simple_cnn_forward_shape() -> None:
     model = build_model("simple_cnn", num_classes=3, width=8, dropout=0.0)
 
     assert model(torch.randn(4, 3, 32, 32)).shape == (4, 3)
+
+
+def test_pestnet_ablation_variants_forward_shape() -> None:
+    for name in ("pestnet_s_no_attention", "pestnet_s_no_residual"):
+        model = build_model(name, num_classes=5, width=8, dropout=0.0)
+        assert model(torch.randn(2, 3, 48, 48)).shape == (2, 5)

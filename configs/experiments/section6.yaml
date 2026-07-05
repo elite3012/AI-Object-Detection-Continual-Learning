@@ -1,0 +1,19 @@
+schema_version: 1
+name: section6_baseline_ablation
+device: cuda
+batch_size: 64
+limit_id_per_class:
+limit_ood_per_class:
+experiments:
+  - name: simple_cnn
+    config: configs/train/simple_cnn.yaml
+    bundle_dir: artifacts/models/simple_cnn_latest
+  - name: pestnet_s_no_attention
+    config: configs/train/pestnet_s_no_attention.yaml
+    bundle_dir: artifacts/models/pestnet_s_no_attention_latest
+  - name: pestnet_s
+    config: configs/train/pestnet_s.yaml
+    bundle_dir: artifacts/models/pestnet_s_latest
+outputs:
+  comparison_json: artifacts/evaluation/section6_model_comparison.json
+  comparison_markdown: artifacts/evaluation/section6_model_comparison.md

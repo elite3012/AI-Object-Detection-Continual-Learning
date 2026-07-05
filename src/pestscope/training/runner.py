@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
 from pestscope.modeling import build_model, count_parameters
@@ -29,7 +30,10 @@ class TrainingOverrides:
     limit_train_per_class: int | None = None
     limit_val_per_class: int | None = None
     device: str | None = None
+    batch_size: int | None = None
+    num_workers: int | None = None
     bundle_dir: Path | None = None
+    log_progress: bool = False
 
 
 def _set_seed(seed: int) -> None:
@@ -71,6 +75,49 @@ def _class_weights(counts: list[int], device: torch.device) -> torch.Tensor:
     total = sum(counts)
     weights = [total / (len(counts) * count) for count in counts]
     return torch.tensor(weights, dtype=torch.float32, device=device)
+
+
+class FocalLoss(nn.Module):
+    def __init__(
+        self,
+        *,
+        gamma: float,
+        weight: torch.Tensor | None = None,
+        label_smoothing: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.gamma = gamma
+        self.register_buffer("weight", weight)
+        self.label_smoothing = label_smoothing
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        cross_entropy = F.cross_entropy(
+            logits,
+            targets,
+            weight=self.weight,
+            reduction="none",
+            label_smoothing=self.label_smoothing,
+        )
+        probabilities = F.softmax(logits, dim=1)
+        target_probability = probabilities.gather(1, targets.unsqueeze(1)).squeeze(1)
+        focal_weight = (1.0 - target_probability).clamp(min=0.0).pow(self.gamma)
+        return (focal_weight * cross_entropy).mean()
+
+
+def _criterion(
+    *,
+    loss: str,
+    weight: torch.Tensor | None,
+    label_smoothing: float,
+    focal_gamma: float,
+) -> nn.Module:
+    if loss == "focal":
+        return FocalLoss(
+            gamma=focal_gamma,
+            weight=weight,
+            label_smoothing=label_smoothing,
+        )
+    return nn.CrossEntropyLoss(weight=weight, label_smoothing=label_smoothing)
 
 
 def _epoch(
@@ -129,6 +176,21 @@ def _write_history(path: Path, rows: list[dict]) -> None:
             writer.writerow({field: row[field] for field in fields})
 
 
+def _write_epoch_checkpoint(
+    *,
+    run_dir: Path,
+    model: nn.Module,
+    history: list[dict],
+    metrics: dict,
+) -> None:
+    torch.save(model.state_dict(), run_dir / "best_model.pt")
+    _write_history(run_dir / "history.csv", history)
+    (run_dir / "metrics.json").write_text(
+        json.dumps(metrics, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def run_training(
     config: TrainingConfig,
     *,
@@ -163,7 +225,14 @@ def run_training(
         train_records,
         dataset_root=config.data.dataset_root,
         class_to_index=id_to_index,
-        transform=ImageTransform(config.data.image_size, train=True),
+        transform=ImageTransform(
+            config.data.image_size,
+            train=True,
+            crop_scale=config.augmentation.crop_scale,
+            hflip_probability=config.augmentation.hflip_probability,
+            rotation_degrees=config.augmentation.rotation_degrees,
+            color_jitter=config.augmentation.color_jitter,
+        ),
     )
     val_dataset = ManifestImageDataset(
         val_records,
@@ -173,15 +242,23 @@ def run_training(
     )
     train_loader = DataLoader(
         train_dataset,
-        batch_size=config.training.batch_size,
+        batch_size=overrides.batch_size or config.training.batch_size,
         shuffle=True,
-        num_workers=config.training.num_workers,
+        num_workers=(
+            overrides.num_workers
+            if overrides.num_workers is not None
+            else config.training.num_workers
+        ),
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=config.training.batch_size,
+        batch_size=overrides.batch_size or config.training.batch_size,
         shuffle=False,
-        num_workers=config.training.num_workers,
+        num_workers=(
+            overrides.num_workers
+            if overrides.num_workers is not None
+            else config.training.num_workers
+        ),
     )
 
     model = build_model(
@@ -195,7 +272,12 @@ def run_training(
         if config.training.class_strategy == "weighted_loss"
         else None
     )
-    criterion = nn.CrossEntropyLoss(weight=weight)
+    criterion = _criterion(
+        loss=config.training.loss,
+        weight=weight,
+        label_smoothing=config.training.label_smoothing,
+        focal_gamma=config.training.focal_gamma,
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.training.learning_rate,
@@ -210,6 +292,15 @@ def run_training(
     best_val = {"macro_f1": -1.0}
     history = []
     epoch_count = overrides.max_epochs or config.training.epochs
+    scheduler = (
+        torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=epoch_count,
+            eta_min=config.training.min_learning_rate,
+        )
+        if config.training.scheduler == "cosine"
+        else None
+    )
     for epoch in range(1, epoch_count + 1):
         train_loss, train_metrics = _epoch(
             model=model,
@@ -242,6 +333,36 @@ def run_training(
             best_state = {
                 key: value.detach().cpu().clone() for key, value in model.state_dict().items()
             }
+            _write_epoch_checkpoint(
+                run_dir=run_dir,
+                model=model,
+                history=history,
+                metrics={
+                    "schema_version": 1,
+                    "run_id": run_id,
+                    "best_validation": best_val,
+                    "history": history,
+                    "checkpoint_status": "in_progress",
+                },
+            )
+        if scheduler is not None:
+            scheduler.step()
+        if overrides.log_progress:
+            print(
+                json.dumps(
+                    {
+                        "epoch": epoch,
+                        "epochs": epoch_count,
+                        "train_loss": round(train_loss, 6),
+                        "train_macro_f1": round(train_metrics["macro_f1"], 6),
+                        "val_loss": round(val_loss, 6),
+                        "val_macro_f1": round(val_metrics["macro_f1"], 6),
+                        "val_top1_accuracy": round(val_metrics["top1_accuracy"], 6),
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
 
     model.load_state_dict(best_state)
     model.to("cpu")
@@ -290,10 +411,27 @@ def run_training(
             "epochs_requested": config.training.epochs,
             "epochs_run": epoch_count,
             "batch_size": config.training.batch_size,
+            "batch_size_effective": overrides.batch_size or config.training.batch_size,
             "learning_rate": config.training.learning_rate,
+            "min_learning_rate": config.training.min_learning_rate,
             "weight_decay": config.training.weight_decay,
             "device": str(device),
+            "num_workers_effective": (
+                overrides.num_workers
+                if overrides.num_workers is not None
+                else config.training.num_workers
+            ),
             "class_strategy": config.training.class_strategy,
+            "loss": config.training.loss,
+            "label_smoothing": config.training.label_smoothing,
+            "focal_gamma": config.training.focal_gamma,
+            "scheduler": config.training.scheduler,
+        },
+        "augmentation": {
+            "crop_scale": list(config.augmentation.crop_scale),
+            "hflip_probability": config.augmentation.hflip_probability,
+            "rotation_degrees": config.augmentation.rotation_degrees,
+            "color_jitter": config.augmentation.color_jitter,
         },
     }
 

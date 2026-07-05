@@ -70,3 +70,23 @@ def load_model_bundle(bundle_dir: Path, *, device: str = "cpu") -> tuple[nn.Modu
     model.to(device)
     model.eval()
     return model, metadata
+
+
+def write_bundle_thresholds(
+    bundle_dir: Path,
+    *,
+    accepted: float,
+    uncertain: float,
+    calibration: dict,
+) -> dict:
+    if not 0 <= uncertain <= accepted <= 1:
+        raise ValueError("Thresholds must satisfy 0 <= uncertain <= accepted <= 1")
+    metadata_path = bundle_dir / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["thresholds"] = {
+        "accepted": accepted,
+        "uncertain": uncertain,
+    }
+    metadata["calibration"] = calibration
+    metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+    return metadata

@@ -44,15 +44,19 @@ class ResidualBlock(nn.Module):
         *,
         stride: int = 1,
         attention: bool = False,
+        residual: bool = True,
     ) -> None:
         super().__init__()
+        self.residual = residual
         self.body = nn.Sequential(
             ConvNormAct(in_channels, out_channels, stride=stride),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
         )
-        self.attention = SqueezeExcitation(out_channels) if attention else nn.Identity()
-        if stride != 1 or in_channels != out_channels:
+        self.attention = (
+            SqueezeExcitation(out_channels) if attention and residual else nn.Identity()
+        )
+        if residual and (stride != 1 or in_channels != out_channels):
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels),
@@ -62,15 +66,24 @@ class ResidualBlock(nn.Module):
         self.activation = nn.SiLU(inplace=True)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        residual = self.shortcut(inputs)
         features = self.attention(self.body(inputs))
-        return self.activation(features + residual)
+        if not self.residual:
+            return self.activation(features)
+        return self.activation(features + self.shortcut(inputs))
 
 
 class PestNetS(nn.Module):
     """Compact residual CNN trained from scratch for the approved IP102 subset."""
 
-    def __init__(self, num_classes: int, *, width: int = 32, dropout: float = 0.25) -> None:
+    def __init__(
+        self,
+        num_classes: int,
+        *,
+        width: int = 32,
+        dropout: float = 0.25,
+        use_attention: bool = True,
+        use_residual: bool = True,
+    ) -> None:
         super().__init__()
         if num_classes < 2:
             raise ValueError("num_classes must be at least 2")
@@ -82,13 +95,24 @@ class PestNetS(nn.Module):
         channels = (width, width * 2, width * 4, width * 8)
         self.features = nn.Sequential(
             ConvNormAct(3, channels[0], stride=2),
-            ResidualBlock(channels[0], channels[0]),
-            ResidualBlock(channels[0], channels[1], stride=2),
-            ResidualBlock(channels[1], channels[1]),
-            ResidualBlock(channels[1], channels[2], stride=2),
-            ResidualBlock(channels[2], channels[2]),
-            ResidualBlock(channels[2], channels[3], stride=2, attention=True),
-            ResidualBlock(channels[3], channels[3], attention=True),
+            ResidualBlock(channels[0], channels[0], residual=use_residual),
+            ResidualBlock(channels[0], channels[1], stride=2, residual=use_residual),
+            ResidualBlock(channels[1], channels[1], residual=use_residual),
+            ResidualBlock(channels[1], channels[2], stride=2, residual=use_residual),
+            ResidualBlock(channels[2], channels[2], residual=use_residual),
+            ResidualBlock(
+                channels[2],
+                channels[3],
+                stride=2,
+                attention=use_attention,
+                residual=use_residual,
+            ),
+            ResidualBlock(
+                channels[3],
+                channels[3],
+                attention=use_attention,
+                residual=use_residual,
+            ),
         )
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
@@ -135,6 +159,21 @@ def build_model(
     normalized = name.lower().replace("-", "_")
     if normalized == "pestnet_s":
         return PestNetS(num_classes=num_classes, width=width, dropout=dropout)
+    if normalized == "pestnet_s_no_attention":
+        return PestNetS(
+            num_classes=num_classes,
+            width=width,
+            dropout=dropout,
+            use_attention=False,
+        )
+    if normalized == "pestnet_s_no_residual":
+        return PestNetS(
+            num_classes=num_classes,
+            width=width,
+            dropout=dropout,
+            use_attention=False,
+            use_residual=False,
+        )
     if normalized == "simple_cnn":
         return SimpleCNN(num_classes=num_classes, width=width, dropout=dropout)
     raise ValueError(f"Unsupported model architecture: {name}")

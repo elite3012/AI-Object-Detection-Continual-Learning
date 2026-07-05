@@ -28,7 +28,12 @@ def parse_args() -> argparse.Namespace:
         help="Use a small deterministic validation slice per class for smoke runs",
     )
     parser.add_argument("--device", help="Override device, for example cpu or cuda")
+    parser.add_argument(
+        "--batch-size", type=int, help="Override training and validation batch size"
+    )
+    parser.add_argument("--num-workers", type=int, help="Override PyTorch DataLoader workers")
     parser.add_argument("--bundle-dir", type=Path, help="Override exported model-bundle directory")
+    parser.add_argument("--progress", action="store_true", help="Print one JSON line per epoch")
     return parser.parse_args()
 
 
@@ -41,7 +46,10 @@ def main() -> None:
             limit_train_per_class=args.limit_train_per_class,
             limit_val_per_class=args.limit_val_per_class,
             device=args.device,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
             bundle_dir=args.bundle_dir,
+            log_progress=args.progress,
         ),
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))

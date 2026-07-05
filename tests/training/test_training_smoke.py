@@ -106,10 +106,20 @@ training:
   epochs: 1
   batch_size: 3
   learning_rate: 0.001
+  min_learning_rate: 0.00001
   weight_decay: 0.0
   device: cpu
   num_workers: 0
   class_strategy: weighted_loss
+  loss: focal
+  focal_gamma: 1.5
+  label_smoothing: 0.05
+  scheduler: cosine
+augmentation:
+  crop_scale: [0.75, 1.0]
+  hflip_probability: 0.25
+  rotation_degrees: 7.0
+  color_jitter: 0.08
 outputs:
   run_dir: {(tmp_path / "runs").as_posix()}
   bundle_dir: {(tmp_path / "bundle").as_posix()}
@@ -132,6 +142,9 @@ outputs:
     metadata = json.loads((bundle_dir / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["model"]["name"] == "pestnet_s"
     assert [item["ip102_id"] for item in metadata["classes"]] == [1, 2, 3]
+    assert metadata["training"]["loss"] == "focal"
+    assert metadata["training"]["scheduler"] == "cosine"
+    assert metadata["augmentation"]["crop_scale"] == [0.75, 1.0]
 
     model, loaded_metadata = load_model_bundle(bundle_dir)
     with torch.no_grad():
